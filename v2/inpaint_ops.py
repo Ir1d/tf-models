@@ -17,10 +17,7 @@ from neuralgym.ops.summary_ops import *
 logger = logging.getLogger()
 np.random.seed(2018)
 
-
-@add_arg_scope
-def gen_conv(x, cnum, ksize, stride=1, rate=1, name='conv',
-             padding='SAME', activation=tf.nn.elu, training=True):
+class GenConvLayer(tf.keras.layers.Layer):
     """Define conv for generator.
 
     Args:
@@ -38,22 +35,36 @@ def gen_conv(x, cnum, ksize, stride=1, rate=1, name='conv',
         tf.Tensor: output
 
     """
-    assert padding in ['SYMMETRIC', 'SAME', 'REFELECT']
-    if padding == 'SYMMETRIC' or padding == 'REFELECT':
-        p = int(rate*(ksize-1)/2)
-        x = tf.pad(tensor=x, paddings=[[0,0], [p, p], [p, p], [0,0]], mode=padding)
-        padding = 'VALID'
-    x = tf.compat.v1.layers.conv2d(
-        x, cnum, ksize, stride, dilation_rate=rate,
-        activation=None, padding=padding, name=name)
-    if cnum == 3 or activation is None:
-        # conv for output
+    def __init__(self, cnum, ksize, stride=1, rate=1, name='conv',
+             padding='SAME', activation=tf.nn.elu, training=True):
+        super(GenConvLayer, self).__init__()
+        self.cnum = cnum
+        self.ksize = ksize
+        self.stride = stride
+        self.rate = rate
+        self.name = name
+        assert padding in ['SYMMETRIC', 'SAME', 'REFELECT']
+        self.padding = padding
+        self.layer_pad_type = padding
+        if padding == 'SYMMETRIC' or padding == 'REFELECT':
+            self.layer_pad_type = 'VALID'
+        self.activation = activation
+        self.training = training
+        self.conv = tf.keras.layers.Conv2d(filters=self.cnum, kernel_size=self.ksize, strides=self.stride, padding=self.layer_pad_type, name=self.name)
+    # def build(self, input_shape):
+    def call(self, inputs, training=True):
+        if self.padding == 'SYMMETRIC' or self.padding == 'REFELECT':
+            p = int(self.rate * (self.ksize - 1) / 2)
+            inputs = tf.pad(tensor=inputs, paddings=[[0,0], [p, p], [p, p], [0,0]], mode=self.padding)
+        x = self.conv(inputs)
+        if (self.cnum == 3 or self.activation is None):
+            # conv for output
+            return x
+        x, y = tf.split(x, 2, 3)
+        x = self.activation(x)
+        y = tf.nn.sigmoid(y)
+        x = x * y
         return x
-    x, y = tf.split(x, 2, 3)
-    x = activation(x)
-    y = tf.nn.sigmoid(y)
-    x = x * y
-    return x
 
 
 @add_arg_scope
@@ -78,6 +89,8 @@ def gen_deconv(x, cnum, name='upsample', padding='SAME', training=True):
             x, cnum, 3, 1, name=name+'_conv', padding=padding,
             training=training)
     return x
+
+
 
 
 @add_arg_scope
@@ -213,7 +226,7 @@ def brush_stroke_mask(FLAGS, name='mask'):
         img_shape = FLAGS.img_shapes
         height = img_shape[0]
         width = img_shape[1]
-        mask = tf.compat.v1.py_func(
+        mask = tf.py_func(
             generate_mask,
             [height, width],
             tf.float32, stateful=True)
