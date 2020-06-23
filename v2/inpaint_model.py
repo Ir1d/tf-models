@@ -176,7 +176,7 @@ class InpaintCAModel(Model):
             if offset_flow is not None:
                 viz_img.append(
                     resize(offset_flow, scale=4,
-                           func=tf.compat.v1.image.resize_bilinear))
+                           func=tf.image.resize_bilinear))
             images_summary(
                 tf.concat(viz_img, axis=2),
                 'raw_incomplete_predicted_complete', FLAGS.viz_max_out)

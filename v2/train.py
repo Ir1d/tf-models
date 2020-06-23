@@ -56,10 +56,8 @@ if __name__ == "__main__":
             static_inpainted_images = model.build_static_infer_graph(
                 FLAGS, static_images, name='static_view/%d' % i)
     # training settings
-    lr = tf.compat.v1.get_variable(
-        'lr', shape=[], trainable=False,
-        initializer=tf.compat.v1.constant_initializer(1e-4))
-    d_optimizer = tf.compat.v1.train.AdamOptimizer(lr, beta1=0.5, beta2=0.999)
+    lr = tf.Variable(name='lr', initial_value=1e-4, trainable=False, shape=[])
+    d_optimizer = tf.keras.optimizers.Adam(learning_rate=lr, beta1=0.5, beta2=0.999)
     g_optimizer = d_optimizer
     # train discriminator with secondary trainer, should initialize before
     # primary trainer.
