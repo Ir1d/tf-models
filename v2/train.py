@@ -4,24 +4,24 @@ import glob
 import tensorflow as tf
 import neuralgym as ng
 
-from inpaint_model import InpaintCAModel
+from inpaint_model import InpaintGenerator, InpaintDiscriminator, gan_hinge_loss
 
 
-def multigpu_graph_def(model, FLAGS, data, gpu_id=0, loss_type='g'):
-    with tf.device('/cpu:0'):
-        images = data.data_pipeline(FLAGS.batch_size)
-    if gpu_id == 0 and loss_type == 'g':
-        _, _, losses = model.build_graph_with_losses(
-            FLAGS, images, FLAGS, summary=True, reuse=True)
-    else:
-        _, _, losses = model.build_graph_with_losses(
-            FLAGS, images, FLAGS, reuse=True)
-    if loss_type == 'g':
-        return losses['g_loss']
-    elif loss_type == 'd':
-        return losses['d_loss']
-    else:
-        raise ValueError('loss type is not supported.')
+# def multigpu_graph_def(model, FLAGS, data, gpu_id=0, loss_type='g'):
+#     with tf.device('/cpu:0'):
+#         images = data.data_pipeline(FLAGS.batch_size)
+#     if gpu_id == 0 and loss_type == 'g':
+#         _, _, losses = model.build_graph_with_losses(
+#             FLAGS, images, FLAGS, summary=True, reuse=True)
+#     else:
+#         _, _, losses = model.build_graph_with_losses(
+#             FLAGS, images, FLAGS, reuse=True)
+#     if loss_type == 'g':
+#         return losses['g_loss']
+#     elif loss_type == 'd':
+#         return losses['d_loss']
+#     else:
+#         raise ValueError('loss type is not supported.')
 
 
 if __name__ == "__main__":
@@ -38,8 +38,8 @@ if __name__ == "__main__":
         nthreads=FLAGS.num_cpus_per_job)
     images = data.data_pipeline(FLAGS.batch_size)
     # main model
-    model = InpaintCAModel()
-    g_vars, d_vars, losses = model.build_graph_with_losses(FLAGS, images)
+    # model = InpaintCAModel()
+    # g_vars, d_vars, losses = model.build_graph_with_losses(FLAGS, images)
     # validation images
     if FLAGS.val:
         with open(FLAGS.data_flist[FLAGS.dataset][1]) as f:
@@ -56,45 +56,92 @@ if __name__ == "__main__":
             static_inpainted_images = model.build_static_infer_graph(
                 FLAGS, static_images, name='static_view/%d' % i)
     # training settings
+
+    G = InpaintGenerator()
+    D = InpaintDiscriminator()
     lr = tf.Variable(name='lr', initial_value=1e-4, trainable=False, shape=[])
     d_optimizer = tf.keras.optimizers.Adam(learning_rate=lr, beta1=0.5, beta2=0.999)
     g_optimizer = d_optimizer
+
+    @tf.function
+    def train_step(inputs, labels):
+        with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
+            # disable FLAGS.guided
+            batch_pos = batch_data / 127.5 - 1.
+            bbox = random_bbox(FLAGS)
+            regular_mask = bbox2mask(FLAGS, bbox, name='mask_c')
+            irregular_mask = brush_stroke_mask(FLAGS, name='mask_c')
+            mask = tf.cast(
+                tf.logical_or(
+                    tf.cast(irregular_mask, tf.bool),
+                    tf.cast(regular_mask, tf.bool),
+                ),
+                tf.float32
+            )
+            batch_incomplete = batch_pos*(1.-mask)
+            xin = batch_incomplete
+            x1, x2, offset_flow = G(xin, mask, training=True)
+            batch_predicted = x2
+
+            losses = {}
+            batch_complete = batch_predicted * mask + batch_incomplete * (1. - mask)
+            losses['ae_loss'] = FLAGS.l1_loss_alpha * tf.reduce_mean(input_tensor=tf.abs(batch_pos - x1))
+            losses['ae_loss'] += FLAGS.l1_loss_alpha * tf.reduce_mean(input_tensor=tf.abs(batch_pos - x2))
+
+            batch_pos_neg = tf.concat([batch_pos, batch_complete], axis=0)
+            batch_pos_neg = tf.concat([batch_pos_neg, tf.tile(mask, [FLAGS.batch_size * 2, 1, 1, 1])], axis=3)
+
+            # SNGAN
+            pos_neg = D(batch_pos_neg, training=training)
+            pos, neg = tf.split(pos_neg, 2)
+            g_loss, d_loss = gan_hinge_loss(pos, neg)
+            losses['g_loss'] = g_loss
+            losses['d_loss'] = d_loss
+            losses['g_loss'] = FLAGS.gan_loss_alpha * losses['g_loss']
+            losses['g_loss'] += losses['ae_loss']
+            # return losses
+        gradients_of_generator = gen_tape.gradient(losses['g_loss'], G.trainable_variables)
+        gradients_of_discriminator = disc_tape.gradient(losses['d_loss'], D.trainable_variables)
+        g_optimizer.apply_gradients(zip(gradients_of_generator, G.trainable_variables))
+        d_optimizer.apply_gradients(zip(gradients_of_discriminator, D.trainable_variables))
+
+
     # train discriminator with secondary trainer, should initialize before
     # primary trainer.
     # discriminator_training_callback = ng.callbacks.SecondaryTrainer(
-    discriminator_training_callback = ng.callbacks.SecondaryMultiGPUTrainer(
-        num_gpus=FLAGS.num_gpus_per_job,
-        pstep=1,
-        optimizer=d_optimizer,
-        var_list=d_vars,
-        max_iters=1,
-        grads_summary=False,
-        graph_def=multigpu_graph_def,
-        graph_def_kwargs={
-            'model': model, 'FLAGS': FLAGS, 'data': data, 'loss_type': 'd'},
-    )
-    # train generator with primary trainer
-    # trainer = ng.train.Trainer(
-    trainer = ng.train.MultiGPUTrainer(
-        num_gpus=FLAGS.num_gpus_per_job,
-        optimizer=g_optimizer,
-        var_list=g_vars,
-        max_iters=FLAGS.max_iters,
-        graph_def=multigpu_graph_def,
-        grads_summary=False,
-        gradient_processor=None,
-        graph_def_kwargs={
-            'model': model, 'FLAGS': FLAGS, 'data': data, 'loss_type': 'g'},
-        spe=FLAGS.train_spe,
-        log_dir=FLAGS.log_dir,
-    )
-    # add all callbacks
-    trainer.add_callbacks([
-        discriminator_training_callback,
-        ng.callbacks.WeightsViewer(),
-        ng.callbacks.ModelRestorer(trainer.context['saver'], dump_prefix=FLAGS.model_restore+'/snap', optimistic=True),
-        ng.callbacks.ModelSaver(FLAGS.train_spe, trainer.context['saver'], FLAGS.log_dir+'/snap'),
-        ng.callbacks.SummaryWriter((FLAGS.val_psteps//1), trainer.context['summary_writer'], tf.compat.v1.summary.merge_all()),
-    ])
-    # launch training
-    trainer.train()
+    # discriminator_training_callback = ng.callbacks.SecondaryMultiGPUTrainer(
+    #     num_gpus=FLAGS.num_gpus_per_job,
+    #     pstep=1,
+    #     optimizer=d_optimizer,
+    #     var_list=d_vars,
+    #     max_iters=1,
+    #     grads_summary=False,
+    #     graph_def=multigpu_graph_def,
+    #     graph_def_kwargs={
+    #         'model': model, 'FLAGS': FLAGS, 'data': data, 'loss_type': 'd'},
+    # )
+    # # train generator with primary trainer
+    # # trainer = ng.train.Trainer(
+    # trainer = ng.train.MultiGPUTrainer(
+    #     num_gpus=FLAGS.num_gpus_per_job,
+    #     optimizer=g_optimizer,
+    #     var_list=g_vars,
+    #     max_iters=FLAGS.max_iters,
+    #     graph_def=multigpu_graph_def,
+    #     grads_summary=False,
+    #     gradient_processor=None,
+    #     graph_def_kwargs={
+    #         'model': model, 'FLAGS': FLAGS, 'data': data, 'loss_type': 'g'},
+    #     spe=FLAGS.train_spe,
+    #     log_dir=FLAGS.log_dir,
+    # )
+    # # add all callbacks
+    # trainer.add_callbacks([
+    #     discriminator_training_callback,
+    #     ng.callbacks.WeightsViewer(),
+    #     ng.callbacks.ModelRestorer(trainer.context['saver'], dump_prefix=FLAGS.model_restore+'/snap', optimistic=True),
+    #     ng.callbacks.ModelSaver(FLAGS.train_spe, trainer.context['saver'], FLAGS.log_dir+'/snap'),
+    #     ng.callbacks.SummaryWriter((FLAGS.val_psteps//1), trainer.context['summary_writer'], tf.compat.v1.summary.merge_all()),
+    # ])
+    # # launch training
+    # trainer.train()
