@@ -4,18 +4,24 @@ import math
 import cv2
 import numpy as np
 import tensorflow as tf
-from tensorflow.contrib.framework.python.ops import add_arg_scope
 from PIL import Image, ImageDraw
 
-from neuralgym.ops.layers import resize
-from neuralgym.ops.layers import *
-from neuralgym.ops.loss_ops import *
-from neuralgym.ops.gan_ops import *
-from neuralgym.ops.summary_ops import *
+# from neuralgym.ops.layers import *
+# from neuralgym.ops.loss_ops import *
+# from neuralgym.ops.gan_ops import *
+# from neuralgym.ops.summary_ops import *
 
 
 logger = logging.getLogger()
 np.random.seed(2018)
+
+class Flatten(tf.keras.layers.Layer):
+    def __init__(self, name):
+        super(Flatten, self).__init__()
+        self.name = name
+    def call(self, inputs, training=True):
+        flattened = tf.reshape(x, [tf.shape(x)[0], -1])
+        return flattened
 
 class GenConvLayer(tf.keras.layers.Layer):
     """Define conv for generator.
@@ -66,30 +72,56 @@ class GenConvLayer(tf.keras.layers.Layer):
         x = x * y
         return x
 
+class resize(tf.keras.layers.Layer):
+    def __init__(self, scale=2, to_shape=None, align_corners=True, dynamic=False, name='resize', func='bilinear'):
+        """Resize a given image.
+        Originated from https://github.com/JiahuiYu/neuralgym/blob/88292adb524186693a32404c0cfdc790426ea441/neuralgym/ops/layers.py#L141
+        """
+        super(resize, self).__init__()
+        self.name = name
+        self.scale = scale
+        self.to_shape = to_shape
+        self.align_corners = align_corners
+        self.dynamic = dynamic
+        if func == 'bilinear':
+            self.func = tf.image.ResizeMethod.BILINEAR
+        elif func == 'nearest':
+            self.func = tf.image.ResizeMethod.NEAREST_NEIGHBOR
 
-
-def resize(x, scale=2, to_shape=None, align_corners=True, dynamic=False,
-           func=tf.image.resize_bilinear, name='resize'):
-    """Resize a given image.
-    Originated from https://github.com/JiahuiYu/neuralgym/blob/88292adb524186693a32404c0cfdc790426ea441/neuralgym/ops/layers.py#L141
-    """
-    if dynamic:
-        xs = tf.cast(tf.shape(x), tf.float32)
-        new_xs = [tf.cast(xs[1]*scale, tf.int32),
-                  tf.cast(xs[2]*scale, tf.int32)]
-    else:
-        xs = x.get_shape().as_list()
-        new_xs = [int(xs[1]*scale), int(xs[2]*scale)]
-    with tf.variable_scope(name):
-        if to_shape is None:
-            x = func(x, new_xs, align_corners=align_corners)
+    def call(self, inputs, training=True):
+        if self.dynamic:
+            # NOTE: there seems no dynamic calls in deepfill
+            xs = tf.cast(tf.shape(x), tf.float32)
+            new_xs = [tf.cast(xs[1]*scale, tf.int32),
+                    tf.cast(xs[2]*scale, tf.int32)]
         else:
-            x = func(x, [to_shape[0], to_shape[1]],
-                     align_corners=align_corners)
-    return x
+            xs = x.get_shape().as_list()
+            new_xs = [int(xs[1]*scale), int(xs[2]*scale)]
+        if self.to_shape is None:
+            x = tf.compat.v1.image.resize(images=inputs, size=new_xs, method=self.func, align_corners=self.align_corners)
+        else:
+            x = tf.compat.v1.image.resize(images=inputs, size=[to_shape[0], to_shape[1]], method=self.func, align_corners=self.align_corners)
+        return flattened
+
+# def resize(x, scale=2, to_shape=None, align_corners=True, dynamic=False,
+#            func=tf.image.resize_bilinear, name='resize'):
+#     if dynamic:
+#         xs = tf.cast(tf.shape(x), tf.float32)
+#         new_xs = [tf.cast(xs[1]*scale, tf.int32),
+#                   tf.cast(xs[2]*scale, tf.int32)]
+#     else:
+#         xs = x.get_shape().as_list()
+#         new_xs = [int(xs[1]*scale), int(xs[2]*scale)]
+#     with tf.variable_scope(name):
+#         if to_shape is None:
+#             x = func(x, new_xs, align_corners=align_corners)
+#         else:
+#             x = func(x, [to_shape[0], to_shape[1]],
+#                      align_corners=align_corners)
+#     return x
 
 class GenDeconvLayer(tf.keras.layers.Layer):
-     """Define deconv for generator.
+    """Define deconv for generator.
     The deconv is defined to be a x2 resize_nearest_neighbor operation with
     additional gen_conv operation.
 
@@ -113,7 +145,7 @@ class GenDeconvLayer(tf.keras.layers.Layer):
     def call(self, inputs, training=True):
         xs = inputs.get_shape().as_list()
         new_xs = [int(xs[1] * 2), int(xs[2] *2)]
-        x = tf.image.resize(images=inputs, size=new_xs, method=ResizeMethod.NEAREST_NEIGHBOR, align_corners=True)
+        x = tf.compat.v1.image.resize(images=inputs, size=new_xs, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR, align_corners=True)
         x = self.conv(x)
         return x
 
@@ -146,7 +178,7 @@ class kernel_spectral_norm(tf.keras.layers.Layer):
         return w_norm
     
 
-class Conv2DSepctralNorm(tf.layers.Conv2D):
+class Conv2DSepctralNorm(tf.keras.layers.Conv2D):
     def build(self, input_shape):
         super(Conv2DSepctralNorm, self).build(input_shape)
         self.sn = kernel_spectral_norm()
@@ -380,7 +412,6 @@ def local_patch(x, bbox):
     x = tf.image.crop_to_bounding_box(x, bbox[0], bbox[1], bbox[2], bbox[3])
     return x
 
-
 def resize_mask_like(mask, x):
     """Resize mask like shape of x.
 
@@ -392,11 +423,12 @@ def resize_mask_like(mask, x):
         tf.Tensor: resized mask
 
     """
-    mask_resize = resize(
-        mask, to_shape=x.get_shape().as_list()[1:3],
-        func=tf.compat.v1.image.resize_nearest_neighbor)
+    shape = x.get_shape().as_list()[1:3]
+    mask_resize = tf.compat.v1.image.resize(images=mask, size=[shape[0], shape[1]], method=tf.image.ResizeMethod.NEAREST_NEIGHBOR, align_corners=True)
+    # mask_resize = resize(
+    #     mask, to_shape=,
+    #     func=tf.compat.v1.image.resize_nearest_neighbor)
     return mask_resize
-
 
 def contextual_attention(f, b, mask=None, ksize=3, stride=1, rate=1,
                          fuse_k=3, softmax_scale=10., training=True, fuse=True):
@@ -431,10 +463,25 @@ def contextual_attention(f, b, mask=None, ksize=3, stride=1, rate=1,
     raw_w = tf.transpose(a=raw_w, perm=[0, 2, 3, 4, 1])  # transpose to b*k*k*c*hw
     # downscaling foreground option: downscaling both foreground and
     # background for matching and use original background for reconstruction.
-    f = resize(f, scale=1./rate, func=tf.compat.v1.image.resize_nearest_neighbor)
-    b = resize(b, to_shape=[int(raw_int_bs[1]/rate), int(raw_int_bs[2]/rate)], func=tf.compat.v1.image.resize_nearest_neighbor)  # https://github.com/tensorflow/tensorflow/issues/11651
+
+    # resize f
+    scale_rate = 1./rate
+    xs = f.get_shape().as_list()
+    new_xs = [int(xs[1] * scale_rate), int(xs[2] * scale_rate)]
+    # print(new_xs, rate)
+    # print([int(raw_int_bs[1]/rate), int(raw_int_bs[2]/rate)])
+    # print(tf.shape(f), tf.shape(b), tf.shape(mask))
+    f = tf.compat.v1.image.resize(images=f, size=new_xs, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR, align_corners=True)
+    # f = resize(f, scale=1./rate, func=tf.compat.v1.image.resize_nearest_neighbor)
+    # resize b
+    b = tf.compat.v1.image.resize(images=b, size=[int(raw_int_bs[1]/rate), int(raw_int_bs[2]/rate)], method=tf.image.ResizeMethod.NEAREST_NEIGHBOR, align_corners=True)
+    # b = resize(b, to_shape=[int(raw_int_bs[1]/rate), int(raw_int_bs[2]/rate)], func=tf.compat.v1.image.resize_nearest_neighbor)  # https://github.com/tensorflow/tensorflow/issues/11651
     if mask is not None:
-        mask = resize(mask, scale=1./rate, func=tf.compat.v1.image.resize_nearest_neighbor)
+        # resize mask
+        mask = tf.compat.v1.image.resize(images=mask, size=new_xs, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR, align_corners=True)
+        # mask = resize(mask, scale=1./rate, func=tf.compat.v1.image.resize_nearest_neighbor)
+    # print(tf.shape(f), tf.shape(b), tf.shape(mask))
+    # print(f.shape, b.shape, mask.shape)
     fs = tf.shape(input=f)
     int_fs = f.get_shape().as_list()
     f_groups = tf.split(f, int_fs[0], axis=0)
@@ -505,7 +552,11 @@ def contextual_attention(f, b, mask=None, ksize=3, stride=1, rate=1,
     # # case2: visualize which pixels are attended
     # flow = highlight_flow_tf(offsets * tf.cast(mask, tf.int32))
     if rate != 1:
-        flow = resize(flow, scale=rate, func=tf.compat.v1.image.resize_bilinear)
+        # resize flow
+        # flow = resize(flow, scale=rate, func=tf.compat.v1.image.resize_bilinear)
+        xs = flow.get_shape().as_list()
+        new_xs = [int(xs[1] * scale_rate), int(xs[2] * scale_rate)]
+        flow = tf.compat.v1.image.resize(images=flow, size=new_xs, method=tf.image.ResizeMethod.BILINEAR, align_corners=True)
     return y, flow
 
 
@@ -528,12 +579,15 @@ def test_contextual_attention(args):
     h, w, _ = b.shape
     b = b[:h//grid*grid, :w//grid*grid, :]
     b = np.expand_dims(b, 0)
+    # print(b.shape)
     logger.info('Size of imageA: {}'.format(b.shape))
 
     f = cv2.imread(args.imageB)
+    f = cv2.resize(f, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_CUBIC)
     h, w, _ = f.shape
     f = f[:h//grid*grid, :w//grid*grid, :]
     f = np.expand_dims(f, 0)
+    # print(f.shape)
     logger.info('Size of imageB: {}'.format(f.shape))
 
     with tf.compat.v1.Session() as sess:
@@ -545,7 +599,6 @@ def test_contextual_attention(args):
             training=False, fuse=False)
         y = sess.run(yt)
         cv2.imwrite(args.imageOut, y[0])
-
 
 def make_color_wheel():
     RY, YG, GC, CB, BM, MR = (15, 6, 4, 11, 13, 6)
@@ -696,3 +749,5 @@ if __name__ == "__main__":
     parser.add_argument('--imageOut', default='result.png', type=str, help='Image B is reconstructed with image A.')
     args = parser.parse_args()
     test_contextual_attention(args)
+
+    # python inpaint_ops.py --imageA ../examples/places2/case1_input.png --imageB ../examples/places2/case1_input.png
