@@ -7,18 +7,162 @@ import tensorflow as tf
 from tensorflow.contrib.framework.python.ops import arg_scope
 
 from neuralgym.models import Model
-from neuralgym.ops.summary_ops import scalar_summary, images_summary
-from neuralgym.ops.summary_ops import gradients_summary
-from neuralgym.ops.layers import flatten, resize
-from neuralgym.ops.gan_ops import gan_hinge_loss
-from neuralgym.ops.gan_ops import random_interpolates
 
-from inpaint_ops import gen_conv, gen_deconv, dis_conv
+from inpaint_ops import GenConvLayer, GenDeconvLayer, DisConvLayer, Flatten
 from inpaint_ops import random_bbox, bbox2mask, local_patch, brush_stroke_mask
 from inpaint_ops import resize_mask_like, contextual_attention
 
 
 logger = logging.getLogger()
+
+
+def gan_hinge_loss(pos, neg, value=1., name='gan_hinge_loss'):
+    """
+    gan with hinge loss:
+    https://github.com/pfnet-research/sngan_projection/blob/c26cedf7384c9776bcbe5764cb5ca5376e762007/updater.py
+    """
+    with tf.variable_scope(name):
+        hinge_pos = tf.reduce_mean(tf.nn.relu(1-pos))
+        hinge_neg = tf.reduce_mean(tf.nn.relu(1+neg))
+        # scalar_summary('pos_hinge_avg', hinge_pos)
+        # scalar_summary('neg_hinge_avg', hinge_neg)
+        d_loss = tf.add(.5 * hinge_pos, .5 * hinge_neg)
+        g_loss = -tf.reduce_mean(neg)
+        # scalar_summary('d_loss', d_loss)
+        # scalar_summary('g_loss', g_loss)
+    return g_loss, d_loss
+
+class InpaintGenerator(tf.keras.Model):
+    def __init__(self, reuse=False, training=True, padding='SAME', name='inpaint_net'):
+        super(InpaintGenerator, self).__init__(name=name)
+
+        cnum = 48
+        # stage 1
+        self.s1_1 = tf.keras.Sequential([
+            GenConvLayer(cnum, 5, 1, name='conv1'),
+            GenConvLayer(2 * cnum, 3, 2, name='conv2_downsample'),
+            GenConvLayer(2 * cnum, 3, 1, name='conv3').
+            GenConvLayer(4 * cnum, 3, 2, name='conv4_downsample'),
+            GenConvLayer(4 * cnum, 3, 1, name='conv5'),
+            GenConvLayer(4 * cnum, 3, 1, name='conv6')
+        ])
+
+        self.s1_2 = tf.keras.Sequential([
+            GenConvLayer(4*cnum, 3, rate=2, name='conv7_atrous'),
+            GenConvLayer(4*cnum, 3, rate=4, name='conv8_atrous'),
+            GenConvLayer(4*cnum, 3, rate=8, name='conv9_atrous'),
+            GenConvLayer(4*cnum, 3, rate=16, name='conv10_atrous'),
+            GenConvLayer(4*cnum, 3, 1, name='conv11'),
+            GenConvLayer(4*cnum, 3, 1, name='conv12'),
+            GenDeconvLayer(2*cnum, name='conv13_upsample'),
+            GenConvLayer(2*cnum, 3, 1, name='conv14'),
+            GenDeconvLayer(cnum, name='conv15_upsample'),
+            GenConvLayer(cnum//2, 3, 1, name='conv16'),
+            GenConvLayer(3, 3, 1, activation=None, name='conv17'),
+            tf.keras.activations.tanh()
+        ])
+
+        self.s2 = tf.keras.Sequential([
+            GenConvLayer(cnum, 5, 1, name='xconv1'),
+            GenConvLayer(cnum, 3, 2, name='xconv2_downsample'),
+            GenConvLayer(2*cnum, 3, 1, name='xconv3'),
+            GenConvLayer(2*cnum, 3, 2, name='xconv4_downsample'),
+            GenConvLayer(4*cnum, 3, 1, name='xconv5'),
+            GenConvLayer(4*cnum, 3, 1, name='xconv6'),
+            GenConvLayer(4*cnum, 3, rate=2, name='xconv7_atrous'),
+            GenConvLayer(4*cnum, 3, rate=4, name='xconv8_atrous'),
+            GenConvLayer(4*cnum, 3, rate=8, name='xconv9_atrous'),
+            GenConvLayer(4*cnum, 3, rate=16, name='xconv10_atrous')
+        ])
+
+        # attention branch
+        self.attn = tf.keras.Sequential([
+            GenConvLayer(cnum, 5, 1, name='pmconv1'),
+            GenConvLayer(cnum, 3, 2, name='pmconv2_downsample'),
+            GenConvLayer(2 * cnum, 3, 1, name='pmconv3'),
+            GenConvLayer(4 * cnum, 3, 2, name='pmconv4_downsample'),
+            GenConvLayer(4 * cnum, 3, 1, name='pmconv5'),
+            GenConvLayer(4 * cnum, 3, 1, name='pmconv6', activation=tf.nn.relu),
+        ])
+
+        self.attn_2 = tf.keras.Sequential([
+            GenConvLayer(4 * cnum, 3, 1, name='pmconv9'),
+            GenConvLayer(4 * cnum, 3, 1, name='pmconv10')
+        ])
+
+        self.final = tf.keras.Sequential([
+            GenConvLayer(4*cnum, 3, 1, name='allconv11'),
+            GenConvLayer(4*cnum, 3, 1, name='allconv12'),
+            GenDeconvLayer(2*cnum, name='allconv13_upsample'),
+            GenConvLayer(2*cnum, 3, 1, name='allconv14'),
+            GenDeconvLayer(cnum, name='allconv15_upsample'),
+            GenConvLayer(cnum//2, 3, 1, name='allconv16'),
+            GenConvLayer(3, 3, 1, activation=None, name='allconv17'),
+            tf.keras.activations.tanh()
+        ])
+
+
+    def call(self, x, mask, training):
+        """Inpaint network.
+
+        Args:
+            x: incomplete image, [-1, 1]
+            mask: mask region {0, 1}
+        Returns:
+            [-1, 1] as predicted image
+        """
+        xin = x1
+        offset_flow = None
+        ones_x = tf.ones_like(x)[:, :, :, 0:1]
+        x = tf.concat([x, ones_x, ones_x * mask], axis=3)
+        
+        cnum = 48
+
+        # stage1
+        x = self.s1_1(x)
+        mask_s = resize_mask_like(mask, x)
+        x = self.s1_2(x)
+
+        x_stage1 = x
+        
+        # stage2
+        # paste result as input
+        x = x * mask + xin[:, :, :, 0:3] * (1. - mask)
+        x.set_shape(xin[:, :, :, 0:3].get_shape().as_list())
+
+        # conv branch
+        xnow = x
+        x = self.s2(xnow)
+        x_hallu = x
+        
+        # attention branch
+        x = self.attn(xnow)
+        x, offset_flow = contextual_attention(x, x, mask_s, 3, 1, rate=2)
+        pm = x
+        x = tf.concat([x_hallu, pm], axis=3)
+
+        # final part
+        x_stage2 = self.final(x)
+        
+        return x_stage1, x_stage2, offset_flow
+
+class InpaintDiscriminator(tf.keras.Model):
+    def __init__(self, reuse=False, training=True, name='inpaint_discriminator'):
+        super(InpaintDiscriminator, self).__init__(name=name)
+        self.reuse = reuse
+        self.training = training
+        cnum = 64
+        self.net = tf.keras.Sequential([
+            DisConvLayer(cnum, name='conv1', training=training),
+            DisConvLayer(cnum*2, name='conv2', training=training),
+            DisConvLayer(cnum*4, name='conv3', training=training),
+            DisConvLayer(cnum*4, name='conv4', training=training),
+            DisConvLayer(cnum*4, name='conv5', training=training),
+            DisConvLayer(cnum*4, name='conv6', training=training),
+            Flatten(name='flatten')
+        ])
+    def call(self, x, training):
+        return self.net(x)
 
 
 class InpaintCAModel(Model):
@@ -118,7 +262,7 @@ class InpaintCAModel(Model):
             x = dis_conv(x, cnum*4, name='conv4', training=training)
             x = dis_conv(x, cnum*4, name='conv5', training=training)
             x = dis_conv(x, cnum*4, name='conv6', training=training)
-            x = flatten(x, name='flatten')
+            x = Flatten(x, name='flatten')
             return x
 
     def build_gan_discriminator(
@@ -164,22 +308,22 @@ class InpaintCAModel(Model):
         # local patches
         losses['ae_loss'] = FLAGS.l1_loss_alpha * tf.reduce_mean(input_tensor=tf.abs(batch_pos - x1))
         losses['ae_loss'] += FLAGS.l1_loss_alpha * tf.reduce_mean(input_tensor=tf.abs(batch_pos - x2))
-        if summary:
-            scalar_summary('losses/ae_loss', losses['ae_loss'])
-            if FLAGS.guided:
-                viz_img = [
-                    batch_pos,
-                    batch_incomplete + edge,
-                    batch_complete]
-            else:
-                viz_img = [batch_pos, batch_incomplete, batch_complete]
-            if offset_flow is not None:
-                viz_img.append(
-                    resize(offset_flow, scale=4,
-                           func=tf.image.resize_bilinear))
-            images_summary(
-                tf.concat(viz_img, axis=2),
-                'raw_incomplete_predicted_complete', FLAGS.viz_max_out)
+        # if summary:
+        #     scalar_summary('losses/ae_loss', losses['ae_loss'])
+        #     if FLAGS.guided:
+        #         viz_img = [
+        #             batch_pos,
+        #             batch_incomplete + edge,
+        #             batch_complete]
+        #     else:
+        #         viz_img = [batch_pos, batch_incomplete, batch_complete]
+        #     if offset_flow is not None:
+        #         viz_img.append(
+        #             resize(offset_flow, scale=4,
+        #                    func=tf.image.resize_bilinear))
+        #     (
+        #         tf.concat(viz_img, axis=2),
+        #         'raw_incomplete_predicted_complete', FLAGS.viz_max_out)
 
         # gan
         batch_pos_neg = tf.concat([batch_pos, batch_complete], axis=0)
@@ -197,12 +341,12 @@ class InpaintCAModel(Model):
             losses['d_loss'] = d_loss
         else:
             raise NotImplementedError('{} not implemented.'.format(FLAGS.gan))
-        if summary:
-            # summary the magnitude of gradients from different losses w.r.t. predicted image
-            gradients_summary(losses['g_loss'], batch_predicted, name='g_loss')
-            gradients_summary(losses['g_loss'], x2, name='g_loss_to_x2')
-            # gradients_summary(losses['ae_loss'], x1, name='ae_loss_to_x1')
-            gradients_summary(losses['ae_loss'], x2, name='ae_loss_to_x2')
+        # if summary:
+        #     # summary the magnitude of gradients from different losses w.r.t. predicted image
+        #     gradients_summary(losses['g_loss'], batch_predicted, name='g_loss')
+        #     gradients_summary(losses['g_loss'], x2, name='g_loss_to_x2')
+        #     # gradients_summary(losses['ae_loss'], x1, name='ae_loss_to_x1')
+        #     gradients_summary(losses['ae_loss'], x2, name='ae_loss_to_x2')
         losses['g_loss'] = FLAGS.gan_loss_alpha * losses['g_loss']
         if FLAGS.ae_loss:
             losses['g_loss'] += losses['ae_loss']
@@ -232,6 +376,7 @@ class InpaintCAModel(Model):
         batch_pos = batch_data / 127.5 - 1.
         batch_incomplete = batch_pos*(1.-mask)
         if FLAGS.guided:
+            # False
             edge = edge * mask
             xin = tf.concat([batch_incomplete, edge], axis=3)
         else:
@@ -244,20 +389,20 @@ class InpaintCAModel(Model):
         # apply mask and reconstruct
         batch_complete = batch_predicted*mask + batch_incomplete*(1.-mask)
         # global image visualization
-        if FLAGS.guided:
-            viz_img = [
-                batch_pos,
-                batch_incomplete + edge,
-                batch_complete]
-        else:
-            viz_img = [batch_pos, batch_incomplete, batch_complete]
-        if offset_flow is not None:
-            viz_img.append(
-                resize(offset_flow, scale=4,
-                       func=tf.compat.v1.image.resize_bilinear))
-        images_summary(
-            tf.concat(viz_img, axis=2),
-            name+'_raw_incomplete_complete', FLAGS.viz_max_out)
+        # if FLAGS.guided:
+        #     viz_img = [
+        #         batch_pos,
+        #         batch_incomplete + edge,
+        #         batch_complete]
+        # else:
+        #     viz_img = [batch_pos, batch_incomplete, batch_complete]
+        # if offset_flow is not None:
+        #     viz_img.append(
+        #         resize(offset_flow, scale=4,
+        #                func=tf.compat.v1.image.resize_bilinear))
+        # (
+        #     tf.concat(viz_img, axis=2),
+        #     name+'_raw_incomplete_complete', FLAGS.viz_max_out)
         return batch_complete
 
     def build_static_infer_graph(self, FLAGS, batch_data, name):
