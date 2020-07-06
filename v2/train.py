@@ -27,15 +27,13 @@ from inpaint_model import InpaintGenerator, InpaintDiscriminator, gan_hinge_loss
 if __name__ == "__main__":
     # training data
     FLAGS = ng.Config('inpaint.yml')
-    img_shapes = FLAGS.img_shapes
+    img_shapes = FLAGS.img_shapes # 256x256
     with open(FLAGS.data_flist[FLAGS.dataset][0]) as f:
         fnames = f.read().splitlines()
-    if FLAGS.guided:
-        fnames = [(fname, fname[:-4] + '_edge.jpg') for fname in fnames]
-        img_shapes = [img_shapes, img_shapes]
-    data = ng.data.DataFromFNames(
-        fnames, img_shapes, random_crop=FLAGS.random_crop,
-        nthreads=FLAGS.num_cpus_per_job)
+    
+    # data = ng.data.DataFromFNames(
+    #     fnames, img_shapes, random_crop=FLAGS.random_crop,
+    #     nthreads=FLAGS.num_cpus_per_job)
     images = data.data_pipeline(FLAGS.batch_size)
     # main model
     # model = InpaintCAModel()
@@ -44,9 +42,6 @@ if __name__ == "__main__":
     if FLAGS.val:
         with open(FLAGS.data_flist[FLAGS.dataset][1]) as f:
             val_fnames = f.read().splitlines()
-        if FLAGS.guided:
-            val_fnames = [
-                (fname, fname[:-4] + '_edge.jpg') for fname in val_fnames]
         # progress monitor by visualizing static images
         for i in range(FLAGS.static_view_size):
             static_fnames = val_fnames[i:i+1]
