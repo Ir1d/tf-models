@@ -1,5 +1,6 @@
 import os
 import glob
+import yaml
 
 import tensorflow as tf
 import neuralgym as ng
@@ -51,7 +52,8 @@ def get_val_iter():
 
 if __name__ == "__main__":
     # training data
-    FLAGS = ng.Config('inpaint.yml')
+    # FLAGS = ng.Config('inpaint.yml')
+    FLAGS = yaml.load(open('inpaint.yml', 'r'), Loader=yaml.FullLoader)
     img_shapes = FLAGS.img_shapes # 256x256
     with open(FLAGS.data_flist[FLAGS.dataset][0]) as f:
         fnames = f.read().splitlines()

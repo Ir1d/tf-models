@@ -2,7 +2,7 @@
 import logging
 
 import cv2
-import neuralgym as ng
+# import neuralgym as ng
 import tensorflow as tf
 from tensorflow.contrib.framework.python.ops import arg_scope
 
