@@ -3,7 +3,7 @@ import glob
 import yaml
 
 import tensorflow as tf
-import neuralgym as ng
+# import neuralgym as ng
 
 from inpaint_model import InpaintGenerator, InpaintDiscriminator, gan_hinge_loss
 
