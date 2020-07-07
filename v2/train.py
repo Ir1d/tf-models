@@ -6,23 +6,48 @@ import neuralgym as ng
 
 from inpaint_model import InpaintGenerator, InpaintDiscriminator, gan_hinge_loss
 
+def prepare_for_training(ds, shuffle_buffer_size=1000, batch_size=1, repeat=False):
+    # https://www.tensorflow.org/tutorials/load_data/images
+    # places2 toooooo big cant cache
+    ds = ds.shuffle(buffer_size=shuffle_buffer_size)
+    if repeat:
+        # Repeat forever for train
+        ds = ds.repeat()
+    ds = ds.batch(batch_size)
+    # `prefetch` lets the dataset fetch batches in the background while the model
+    # is training.
+    ds = ds.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+    return ds
 
-# def multigpu_graph_def(model, FLAGS, data, gpu_id=0, loss_type='g'):
-#     with tf.device('/cpu:0'):
-#         images = data.data_pipeline(FLAGS.batch_size)
-#     if gpu_id == 0 and loss_type == 'g':
-#         _, _, losses = model.build_graph_with_losses(
-#             FLAGS, images, FLAGS, summary=True, reuse=True)
-#     else:
-#         _, _, losses = model.build_graph_with_losses(
-#             FLAGS, images, FLAGS, reuse=True)
-#     if loss_type == 'g':
-#         return losses['g_loss']
-#     elif loss_type == 'd':
-#         return losses['d_loss']
-#     else:
-#         raise ValueError('loss type is not supported.')
+def decode_img(img):
+    # convert the compressed string to a 3D uint8 tensor
+    img = tf.image.decode_image(img, channels=3)
+    # Use `convert_image_dtype` to convert to floats in the [0,1] range.
+    img = tf.image.convert_image_dtype(img, tf.float32)
+    # dont resize here, leave resize in the train loop to generate patches on-the-fly
+    return img
 
+def process_path(file_path, resize=False):
+    # load the raw data from the file as a string
+    img = tf.io.read_file(file_path)
+    img = decode_img(img)
+    if resize:
+        img = tf.image.resiz(img, [256, 256])
+    return img
+
+def get_train_iter():
+    data_dir = 'examples/places2/'
+    list_ds = tf.data.Dataset.list_files(str(data_dir + '*_output.png'))
+    new_ds = list_ds.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    train_ds = prepare_for_training(new_ds, repeat=True)
+    return iter(train_ds)
+
+def get_val_iter():
+    data_dir = 'examples/places2/'
+    list_ds = tf.data.Dataset.list_files(str(data_dir + '*_output.png'))
+    new_ds = list_ds.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    train_ds = prepare_for_training(new_ds, repeat=False)
+    return iter(train_ds)
 
 if __name__ == "__main__":
     # training data
@@ -34,22 +59,22 @@ if __name__ == "__main__":
     # data = ng.data.DataFromFNames(
     #     fnames, img_shapes, random_crop=FLAGS.random_crop,
     #     nthreads=FLAGS.num_cpus_per_job)
-    images = data.data_pipeline(FLAGS.batch_size)
+    # images = data.data_pipeline(FLAGS.batch_size)
     # main model
     # model = InpaintCAModel()
     # g_vars, d_vars, losses = model.build_graph_with_losses(FLAGS, images)
     # validation images
-    if FLAGS.val:
-        with open(FLAGS.data_flist[FLAGS.dataset][1]) as f:
-            val_fnames = f.read().splitlines()
-        # progress monitor by visualizing static images
-        for i in range(FLAGS.static_view_size):
-            static_fnames = val_fnames[i:i+1]
-            static_images = ng.data.DataFromFNames(
-                static_fnames, img_shapes, nthreads=1,
-                random_crop=FLAGS.random_crop).data_pipeline(1)
-            static_inpainted_images = model.build_static_infer_graph(
-                FLAGS, static_images, name='static_view/%d' % i)
+    # if FLAGS.val:
+    #     with open(FLAGS.data_flist[FLAGS.dataset][1]) as f:
+    #         val_fnames = f.read().splitlines()
+    #     # progress monitor by visualizing static images
+    #     for i in range(FLAGS.static_view_size):
+    #         static_fnames = val_fnames[i:i+1]
+    #         static_images = ng.data.DataFromFNames(
+    #             static_fnames, img_shapes, nthreads=1,
+    #             random_crop=FLAGS.random_crop).data_pipeline(1)
+    #         static_inpainted_images = model.build_static_infer_graph(
+    #             FLAGS, static_images, name='static_view/%d' % i)
     # training settings
 
     G = InpaintGenerator()
@@ -58,10 +83,16 @@ if __name__ == "__main__":
     d_optimizer = tf.keras.optimizers.Adam(learning_rate=lr, beta1=0.5, beta2=0.999)
     g_optimizer = d_optimizer
 
+    # data
+    train_iter = get_train_iter()
+    val_iter = get_val_iter()
+    # TODO: val images should be static and generated before running
+
     @tf.function
     def train_step(inputs, labels):
         with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
             # disable FLAGS.guided
+            batch_data = next(train_iter)
             batch_pos = batch_data / 127.5 - 1.
             bbox = random_bbox(FLAGS)
             regular_mask = bbox2mask(FLAGS, bbox, name='mask_c')
