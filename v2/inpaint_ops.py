@@ -18,7 +18,7 @@ np.random.seed(2018)
 class Flatten(tf.keras.layers.Layer):
     def __init__(self, name):
         super(Flatten, self).__init__()
-        self.name = name
+        # self.name = name
     def call(self, inputs, training=True):
         flattened = tf.reshape(x, [tf.shape(x)[0], -1])
         return flattened
@@ -48,7 +48,7 @@ class GenConvLayer(tf.keras.layers.Layer):
         self.ksize = ksize
         self.stride = stride
         self.rate = rate
-        self.name = name
+        # self.name = name
         assert padding in ['SYMMETRIC', 'SAME', 'REFELECT']
         self.padding = padding
         self.layer_pad_type = padding
@@ -56,7 +56,7 @@ class GenConvLayer(tf.keras.layers.Layer):
             self.layer_pad_type = 'VALID'
         self.activation = activation
         self.training = training
-        self.conv = tf.keras.layers.Conv2d(filters=self.cnum, kernel_size=self.ksize, strides=self.stride, padding=self.layer_pad_type, name=self.name)
+        self.conv = tf.keras.layers.Conv2D(filters=self.cnum, kernel_size=self.ksize, strides=self.stride, padding=self.layer_pad_type, name=name)
     # def build(self, input_shape):
     def call(self, inputs, training=True):
         if self.padding == 'SYMMETRIC' or self.padding == 'REFELECT':
@@ -78,7 +78,7 @@ class resize(tf.keras.layers.Layer):
         Originated from https://github.com/JiahuiYu/neuralgym/blob/88292adb524186693a32404c0cfdc790426ea441/neuralgym/ops/layers.py#L141
         """
         super(resize, self).__init__()
-        self.name = name
+        # self.name = name
         self.scale = scale
         self.to_shape = to_shape
         self.align_corners = align_corners
@@ -138,10 +138,10 @@ class GenDeconvLayer(tf.keras.layers.Layer):
     def __init__(self, cnum, name='upsample', padding='SAME', training=True):
         super(GenDeconvLayer, self).__init__()
         self.cnum = cnum
-        self.name = name
+        # self.name = name
         self.padding = padding
         self.training = training
-        self.conv = GenConvLayer(cnum=cnum, ksize=3, stride=1, name=self.name + '_conv', padding=self.padding, training=self.training)
+        self.conv = GenConvLayer(cnum=cnum, ksize=3, stride=1, name=name + '_conv', padding=self.padding, training=self.training)
     def call(self, inputs, training=True):
         xs = inputs.get_shape().as_list()
         new_xs = [int(xs[1] * 2), int(xs[2] *2)]
@@ -163,7 +163,7 @@ def power_iteration(u, ite):
 class kernel_spectral_norm(tf.keras.layers.Layer):
     def __init__(self, iteration=1, name='kernel_sn'):
         self.iteration = iteration
-        self.name = name
+        # self.name = name
     def call(self, inputs):
         # inputs is kernel
         w_shape = inputs.get_shape().as_list()
@@ -223,7 +223,7 @@ class conv2d_spectral_norm(tf.keras.layers.Layer):
         self.kernel_constraint = kernel_constraint
         self.bias_constraint = bias_constraint
         self.trainable = trainable
-        self.name = name
+        # self.name = name
 
         self.layer = Conv2DSepctralNorm(
         filters=filters,
@@ -270,9 +270,9 @@ class DisConvLayer(tf.keras.layers.Layer):
         self.cnum = cnum
         self.ksize = ksize
         self.stride = stride
-        self.name = name
+        # self.name = name
         self.training = training
-        self.conv = conv2d_spectral_norm(x, self.cnum, self.ksize, self.stride, 'SAME', name=self.name)
+        self.conv = conv2d_spectral_norm(x, self.cnum, self.ksize, self.stride, 'SAME', name=name)
     def call(self, inputs, training=True):
         x = self.conv(inputs)
         x = tf.nn.leaky_relu(x)
