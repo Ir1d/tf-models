@@ -54,9 +54,10 @@ if __name__ == "__main__":
     # training data
     # FLAGS = ng.Config('inpaint.yml')
     FLAGS = yaml.load(open('inpaint.yml', 'r'), Loader=yaml.FullLoader)
-    img_shapes = FLAGS.img_shapes # 256x256
-    with open(FLAGS.data_flist[FLAGS.dataset][0]) as f:
-        fnames = f.read().splitlines()
+    # img_shapes = FLAGS.img_shapes # 256x256
+    img_shapes = [256, 256, 3]
+    # with open(FLAGS.data_flist[FLAGS.dataset][0]) as f:
+    #     fnames = f.read().splitlines()
     
     # data = ng.data.DataFromFNames(
     #     fnames, img_shapes, random_crop=FLAGS.random_crop,
