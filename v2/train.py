@@ -83,7 +83,7 @@ if __name__ == "__main__":
     G = InpaintGenerator()
     D = InpaintDiscriminator()
     lr = tf.Variable(name='lr', initial_value=1e-4, trainable=False, shape=[])
-    d_optimizer = tf.keras.optimizers.Adam(learning_rate=lr, beta1=0.5, beta2=0.999)
+    d_optimizer = tf.keras.optimizers.Adam(learning_rate=lr, beta_1=0.5, beta_2=0.999)
     g_optimizer = d_optimizer
 
     # data
@@ -96,7 +96,7 @@ if __name__ == "__main__":
         with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
             # disable FLAGS.guided
             batch_data = next(train_iter)
-            batch_pos = batch_data / 127.5 - 1.
+            # batch_pos = batch_data / 127.5 - 1.
             bbox = random_bbox(FLAGS)
             regular_mask = bbox2mask(FLAGS, bbox, name='mask_c')
             irregular_mask = brush_stroke_mask(FLAGS, name='mask_c')

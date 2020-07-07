@@ -188,7 +188,7 @@ class conv2d_spectral_norm(tf.keras.layers.Layer):
     """
     https://github.com/JiahuiYu/neuralgym/blob/88292adb524186693a32404c0cfdc790426ea441/neuralgym/ops/gan_ops.py#L144
     """
-    def __init__(filters,
+    def __init__(self, filters,
         kernel_size,
         strides=(1, 1),
         padding='valid',
@@ -272,7 +272,7 @@ class DisConvLayer(tf.keras.layers.Layer):
         self.stride = stride
         # self.name = name
         self.training = training
-        self.conv = conv2d_spectral_norm(x, self.cnum, self.ksize, self.stride, 'SAME', name=name)
+        self.conv = conv2d_spectral_norm(self.cnum, self.ksize, self.stride, 'SAME', name=name)
     def call(self, inputs, training=True):
         x = self.conv(inputs)
         x = tf.nn.leaky_relu(x)
