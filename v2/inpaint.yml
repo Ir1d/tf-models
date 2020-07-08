@@ -27,29 +27,6 @@ max_iters: 100000000
 viz_max_out: 10
 val_psteps: 2000
 
-# data
-data_flist:
-  # https://github.com/jiahuiyu/progressive_growing_of_gans_tf
-  celebahq: [
-    'data/celeba_hq/train_shuffled.flist',
-    'data/celeba_hq/validation_static_view.flist'
-  ]
-  # http://mmlab.ie.cuhk.edu.hk/projects/celeba.html, please to use random_crop: True
-  celeba: [
-    'data/celeba/train_shuffled.flist',
-    'data/celeba/validation_static_view.flist'
-  ]
-  # http://places2.csail.mit.edu/, please download the high-resolution dataset and use random_crop: True
-  places2: [
-    'data/places2/train_shuffled.flist',
-    'data/places2/validation_static_view.flist'
-  ]
-  # http://www.image-net.org/, please use random_crop: True
-  imagenet: [
-    'data/imagenet/train_shuffled.flist',
-    'data/imagenet/validation_static_view.flist',
-  ]
-
 static_view_size: 30
 img_shapes: [256, 256, 3]
 height: 128
