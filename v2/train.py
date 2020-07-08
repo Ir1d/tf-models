@@ -6,6 +6,7 @@ import tensorflow as tf
 # import neuralgym as ng
 
 from inpaint_model import InpaintGenerator, InpaintDiscriminator, gan_hinge_loss
+from inpaint_ops import random_bbox, bbox2mask, brush_stroke_mask
 
 def prepare_for_training(ds, shuffle_buffer_size=1000, batch_size=1, repeat=False):
     # https://www.tensorflow.org/tutorials/load_data/images
@@ -22,18 +23,19 @@ def prepare_for_training(ds, shuffle_buffer_size=1000, batch_size=1, repeat=Fals
 
 def decode_img(img):
     # convert the compressed string to a 3D uint8 tensor
-    img = tf.image.decode_image(img, channels=3)
+    # use decode_png instead of decode_image https://stackoverflow.com/a/49101717/4597306
+    img = tf.image.decode_png(img, channels=3)
     # Use `convert_image_dtype` to convert to floats in the [0,1] range.
     img = tf.image.convert_image_dtype(img, tf.float32)
     # dont resize here, leave resize in the train loop to generate patches on-the-fly
     return img
 
-def process_path(file_path, resize=False):
+def process_path(file_path, resize=True):
     # load the raw data from the file as a string
     img = tf.io.read_file(file_path)
     img = decode_img(img)
     if resize:
-        img = tf.image.resiz(img, [256, 256])
+        img = tf.image.resize(img, size=[256, 256])
     return img
 
 def get_train_iter():
@@ -54,8 +56,8 @@ if __name__ == "__main__":
     # training data
     # FLAGS = ng.Config('inpaint.yml')
     FLAGS = yaml.load(open('inpaint.yml', 'r'), Loader=yaml.FullLoader)
-    # img_shapes = FLAGS.img_shapes # 256x256
-    img_shapes = [256, 256, 3]
+    img_shapes = FLAGS['img_shapes'] # 256x256
+    # img_shapes = [256, 256, 3]
     # with open(FLAGS.data_flist[FLAGS.dataset][0]) as f:
     #     fnames = f.read().splitlines()
     
@@ -92,7 +94,7 @@ if __name__ == "__main__":
     # TODO: val images should be static and generated before running
 
     @tf.function
-    def train_step(inputs, labels):
+    def train_step():
         with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
             # disable FLAGS.guided
             batch_data = next(train_iter)
@@ -107,7 +109,7 @@ if __name__ == "__main__":
                 ),
                 tf.float32
             )
-            batch_incomplete = batch_pos*(1.-mask)
+            batch_incomplete = batch_data*(1.-mask)
             xin = batch_incomplete
             x1, x2, offset_flow = G(xin, mask, training=True)
             batch_predicted = x2
@@ -134,6 +136,9 @@ if __name__ == "__main__":
         g_optimizer.apply_gradients(zip(gradients_of_generator, G.trainable_variables))
         d_optimizer.apply_gradients(zip(gradients_of_discriminator, D.trainable_variables))
 
+    for iter_idx in range(1):
+    # for iter_idx in range(FLAGS.max_iters):
+        train_step()
 
     # train discriminator with secondary trainer, should initialize before
     # primary trainer.
