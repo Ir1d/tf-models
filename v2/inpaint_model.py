@@ -109,7 +109,7 @@ class InpaintGenerator(tf.keras.Model):
         Returns:
             [-1, 1] as predicted image
         """
-        xin = x1
+        xin = x
         offset_flow = None
         ones_x = tf.ones_like(x)[:, :, :, 0:1]
         x = tf.concat([x, ones_x, ones_x * mask], axis=3)
