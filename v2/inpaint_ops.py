@@ -286,17 +286,17 @@ def random_bbox(FLAGS):
         tuple: (top, left, height, width)
 
     """
-    img_shape = FLAGS.img_shapes
+    img_shape = FLAGS['img_shapes']
     img_height = img_shape[0]
     img_width = img_shape[1]
-    maxt = img_height - FLAGS.vertical_margin - FLAGS.height
-    maxl = img_width - FLAGS.horizontal_margin - FLAGS.width
+    maxt = img_height - FLAGS['vertical_margin'] - FLAGS['height']
+    maxl = img_width - FLAGS['horizontal_margin'] - FLAGS['width']
     t = tf.random.uniform(
-        [], minval=FLAGS.vertical_margin, maxval=maxt, dtype=tf.int32)
+        [], minval=FLAGS['vertical_margin'], maxval=maxt, dtype=tf.int32)
     l = tf.random.uniform(
-        [], minval=FLAGS.horizontal_margin, maxval=maxl, dtype=tf.int32)
-    h = tf.constant(FLAGS.height)
-    w = tf.constant(FLAGS.width)
+        [], minval=FLAGS['horizontal_margin'], maxval=maxl, dtype=tf.int32)
+    h = tf.constant(FLAGS['height'])
+    w = tf.constant(FLAGS['width'])
     return (t, l, h, w)
 
 
@@ -318,13 +318,13 @@ def bbox2mask(FLAGS, bbox, name='mask'):
              bbox[1]+w:bbox[1]+bbox[3]-w, :] = 1.
         return mask
     with tf.compat.v1.variable_scope(name), tf.device('/cpu:0'):
-        img_shape = FLAGS.img_shapes
+        img_shape = FLAGS['img_shapes']
         height = img_shape[0]
         width = img_shape[1]
         mask = tf.compat.v1.py_func(
             npmask,
             [bbox, height, width,
-             FLAGS.max_delta_height, FLAGS.max_delta_width],
+             FLAGS['max_delta_height'], FLAGS['max_delta_width']],
             tf.float32, stateful=False)
         mask.set_shape([1] + [height, width] + [1])
     return mask
@@ -387,10 +387,10 @@ def brush_stroke_mask(FLAGS, name='mask'):
         mask = np.reshape(mask, (1, H, W, 1))
         return mask
     with tf.compat.v1.variable_scope(name), tf.device('/cpu:0'):
-        img_shape = FLAGS.img_shapes
+        img_shape = FLAGS['img_shapes']
         height = img_shape[0]
         width = img_shape[1]
-        mask = tf.py_func(
+        mask = tf.compat.v1.py_func(
             generate_mask,
             [height, width],
             tf.float32, stateful=True)
