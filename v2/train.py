@@ -140,7 +140,7 @@ if __name__ == "__main__":
         g_optimizer.apply_gradients(zip(gradients_of_generator, G.trainable_variables))
         d_optimizer.apply_gradients(zip(gradients_of_discriminator, D.trainable_variables))
 
-    for iter_idx in range(1):
+    for iter_idx in range(10):
     # for iter_idx in range(FLAGS['max_iters']):
         train_step()
 
