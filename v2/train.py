@@ -38,18 +38,18 @@ def process_path(file_path, resize=True):
         img = tf.image.resize(img, size=[256, 256])
     return img
 
-def get_train_iter():
+def get_train_iter(bs=1):
     data_dir = 'examples/places2/'
     list_ds = tf.data.Dataset.list_files(str(data_dir + '*_output.png'))
     new_ds = list_ds.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-    train_ds = prepare_for_training(new_ds, repeat=True)
+    train_ds = prepare_for_training(new_ds, batch_size=bs, repeat=True)
     return iter(train_ds)
 
-def get_val_iter():
+def get_val_iter(bs=1):
     data_dir = 'examples/places2/'
     list_ds = tf.data.Dataset.list_files(str(data_dir + '*_output.png'))
     new_ds = list_ds.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-    train_ds = prepare_for_training(new_ds, repeat=False)
+    train_ds = prepare_for_training(new_ds, batch_size=bs, repeat=False)
     return iter(train_ds)
 
 if __name__ == "__main__":
@@ -58,26 +58,26 @@ if __name__ == "__main__":
     FLAGS = yaml.load(open('inpaint.yml', 'r'), Loader=yaml.FullLoader)
     img_shapes = FLAGS['img_shapes'] # 256x256
     # img_shapes = [256, 256, 3]
-    # with open(FLAGS.data_flist[FLAGS.dataset][0]) as f:
+    # with open(FLAGS['data_flist'][FLAGS['dataset']][0]) as f:
     #     fnames = f.read().splitlines()
     
     # data = ng.data.DataFromFNames(
-    #     fnames, img_shapes, random_crop=FLAGS.random_crop,
-    #     nthreads=FLAGS.num_cpus_per_job)
-    # images = data.data_pipeline(FLAGS.batch_size)
+    #     fnames, img_shapes, random_crop=FLAGS['random_crop'],
+    #     nthreads=FLAGS['num_cpus_per_job'])
+    # images = data.data_pipeline(FLAGS['batch_size'])
     # main model
     # model = InpaintCAModel()
     # g_vars, d_vars, losses = model.build_graph_with_losses(FLAGS, images)
     # validation images
-    # if FLAGS.val:
-    #     with open(FLAGS.data_flist[FLAGS.dataset][1]) as f:
+    # if FLAGS['val']:
+    #     with open(FLAGS['data_flist'][FLAGS['dataset']][1]) as f:
     #         val_fnames = f.read().splitlines()
     #     # progress monitor by visualizing static images
-    #     for i in range(FLAGS.static_view_size):
+    #     for i in range(FLAGS['static_view_size']):
     #         static_fnames = val_fnames[i:i+1]
     #         static_images = ng.data.DataFromFNames(
     #             static_fnames, img_shapes, nthreads=1,
-    #             random_crop=FLAGS.random_crop).data_pipeline(1)
+    #             random_crop=FLAGS['random_crop']).data_pipeline(1)
     #         static_inpainted_images = model.build_static_infer_graph(
     #             FLAGS, static_images, name='static_view/%d' % i)
     # training settings
@@ -89,15 +89,15 @@ if __name__ == "__main__":
     g_optimizer = d_optimizer
 
     # data
-    train_iter = get_train_iter()
+    train_iter = get_train_iter(bs=FLAGS['batch_size'])
     val_iter = get_val_iter()
     # TODO: val images should be static and generated before running
 
     @tf.function
     def train_step():
         with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
-            # disable FLAGS.guided
-            batch_data = next(train_iter)
+            # disable FLAGS['guided']
+            batch_pos = next(train_iter)
             # batch_pos = batch_data / 127.5 - 1.
             bbox = random_bbox(FLAGS)
             regular_mask = bbox2mask(FLAGS, bbox, name='mask_c')
@@ -109,7 +109,7 @@ if __name__ == "__main__":
                 ),
                 tf.float32
             )
-            batch_incomplete = batch_data*(1.-mask)
+            batch_incomplete = batch_pos*(1.-mask)
             xin = batch_incomplete
             # print(">>> xin", xin.get_shape().as_list())
             x1, x2, offset_flow = G(xin, mask, training=True)
@@ -117,19 +117,22 @@ if __name__ == "__main__":
 
             losses = {}
             batch_complete = batch_predicted * mask + batch_incomplete * (1. - mask)
-            losses['ae_loss'] = FLAGS.l1_loss_alpha * tf.reduce_mean(input_tensor=tf.abs(batch_pos - x1))
-            losses['ae_loss'] += FLAGS.l1_loss_alpha * tf.reduce_mean(input_tensor=tf.abs(batch_pos - x2))
+            losses['ae_loss'] = FLAGS['l1_loss_alpha'] * tf.reduce_mean(input_tensor=tf.abs(batch_pos - x1))
+            losses['ae_loss'] += FLAGS['l1_loss_alpha'] * tf.reduce_mean(input_tensor=tf.abs(batch_pos - x2))
 
             batch_pos_neg = tf.concat([batch_pos, batch_complete], axis=0)
-            batch_pos_neg = tf.concat([batch_pos_neg, tf.tile(mask, [FLAGS.batch_size * 2, 1, 1, 1])], axis=3)
+            print('>> batch_pos_neg', batch_pos_neg.get_shape().as_list())
+            print('>> mask', mask.get_shape().as_list())
+            print('>> mask_new', tf.tile(mask, [FLAGS['batch_size'] * 2, 1, 1, 1]).get_shape().as_list())
+            batch_pos_neg = tf.concat([batch_pos_neg, tf.tile(mask, [FLAGS['batch_size'] * 2, 1, 1, 1])], axis=3)
 
             # SNGAN
-            pos_neg = D(batch_pos_neg, training=training)
+            pos_neg = D(batch_pos_neg, training=True)
             pos, neg = tf.split(pos_neg, 2)
             g_loss, d_loss = gan_hinge_loss(pos, neg)
             losses['g_loss'] = g_loss
             losses['d_loss'] = d_loss
-            losses['g_loss'] = FLAGS.gan_loss_alpha * losses['g_loss']
+            losses['g_loss'] = FLAGS['gan_loss_alpha'] * losses['g_loss']
             losses['g_loss'] += losses['ae_loss']
             # return losses
         gradients_of_generator = gen_tape.gradient(losses['g_loss'], G.trainable_variables)
@@ -138,14 +141,14 @@ if __name__ == "__main__":
         d_optimizer.apply_gradients(zip(gradients_of_discriminator, D.trainable_variables))
 
     for iter_idx in range(1):
-    # for iter_idx in range(FLAGS.max_iters):
+    # for iter_idx in range(FLAGS['max_iters']):
         train_step()
 
     # train discriminator with secondary trainer, should initialize before
     # primary trainer.
     # discriminator_training_callback = ng.callbacks.SecondaryTrainer(
     # discriminator_training_callback = ng.callbacks.SecondaryMultiGPUTrainer(
-    #     num_gpus=FLAGS.num_gpus_per_job,
+    #     num_gpus=FLAGS['num_gpus_per_job'],
     #     pstep=1,
     #     optimizer=d_optimizer,
     #     var_list=d_vars,
@@ -158,25 +161,25 @@ if __name__ == "__main__":
     # # train generator with primary trainer
     # # trainer = ng.train.Trainer(
     # trainer = ng.train.MultiGPUTrainer(
-    #     num_gpus=FLAGS.num_gpus_per_job,
+    #     num_gpus=FLAGS['num_gpus_per_job'],
     #     optimizer=g_optimizer,
     #     var_list=g_vars,
-    #     max_iters=FLAGS.max_iters,
+    #     max_iters=FLAGS['max_iters'],
     #     graph_def=multigpu_graph_def,
     #     grads_summary=False,
     #     gradient_processor=None,
     #     graph_def_kwargs={
     #         'model': model, 'FLAGS': FLAGS, 'data': data, 'loss_type': 'g'},
-    #     spe=FLAGS.train_spe,
-    #     log_dir=FLAGS.log_dir,
+    #     spe=FLAGS['train_spe'],
+    #     log_dir=FLAGS['log_dir'],
     # )
     # # add all callbacks
     # trainer.add_callbacks([
     #     discriminator_training_callback,
     #     ng.callbacks.WeightsViewer(),
-    #     ng.callbacks.ModelRestorer(trainer.context['saver'], dump_prefix=FLAGS.model_restore+'/snap', optimistic=True),
-    #     ng.callbacks.ModelSaver(FLAGS.train_spe, trainer.context['saver'], FLAGS.log_dir+'/snap'),
-    #     ng.callbacks.SummaryWriter((FLAGS.val_psteps//1), trainer.context['summary_writer'], tf.compat.v1.summary.merge_all()),
+    #     ng.callbacks.ModelRestorer(trainer.context['saver'], dump_prefix=FLAGS['model_restore']+'/snap', optimistic=True),
+    #     ng.callbacks.ModelSaver(FLAGS['train_spe'], trainer.context['saver'], FLAGS['log_dir']+'/snap'),
+    #     ng.callbacks.SummaryWriter((FLAGS['val_psteps']//1), trainer.context['summary_writer'], tf.compat.v1.summary.merge_all()),
     # ])
     # # launch training
     # trainer.train()
