@@ -21,7 +21,7 @@ def gan_hinge_loss(pos, neg, value=1., name='gan_hinge_loss'):
     gan with hinge loss:
     https://github.com/pfnet-research/sngan_projection/blob/c26cedf7384c9776bcbe5764cb5ca5376e762007/updater.py
     """
-    with tf.variable_scope(name):
+    with tf.compat.v1.variable_scope(name):
         hinge_pos = tf.reduce_mean(tf.nn.relu(1-pos))
         hinge_neg = tf.reduce_mean(tf.nn.relu(1+neg))
         # scalar_summary('pos_hinge_avg', hinge_pos)
@@ -137,6 +137,7 @@ class InpaintGenerator(tf.keras.Model):
         # attention branch
         x = self.attn(xnow)
         x, offset_flow = contextual_attention(x, x, mask_s, 3, 1, rate=2)
+        x = self.attn_2(x)
         pm = x
         x = tf.concat([x_hallu, pm], axis=3)
 
