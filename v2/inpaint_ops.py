@@ -455,6 +455,8 @@ def contextual_attention(f, b, mask=None, ksize=3, stride=1, rate=1,
     raw_fs = tf.shape(input=f)
     raw_int_fs = f.get_shape().as_list()
     raw_int_bs = b.get_shape().as_list()
+    # print('>> fs', raw_int_fs)
+    # print('>> bs', raw_int_bs)
     # extract patches from background with stride and rate
     kernel = 2*rate
     raw_w = tf.image.extract_patches(

@@ -15,7 +15,7 @@ def prepare_for_training(ds, shuffle_buffer_size=1000, batch_size=1, repeat=Fals
     if repeat:
         # Repeat forever for train
         ds = ds.repeat()
-    ds = ds.batch(batch_size)
+    ds = ds.batch(batch_size, drop_remainder=True)
     # `prefetch` lets the dataset fetch batches in the background while the model
     # is training.
     ds = ds.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
@@ -111,6 +111,7 @@ if __name__ == "__main__":
             )
             batch_incomplete = batch_data*(1.-mask)
             xin = batch_incomplete
+            # print(">>> xin", xin.get_shape().as_list())
             x1, x2, offset_flow = G(xin, mask, training=True)
             batch_predicted = x2
 
