@@ -3,6 +3,9 @@ import argparse
 import cv2
 import numpy as np
 import tensorflow as tf
+tf.config.gpu.set_per_process_memory_growth(True)
+import yaml
+from PIL import Image
 import neuralgym as ng
 
 from inpaint_model import InpaintCAModel
@@ -20,13 +23,17 @@ parser.add_argument('--checkpoint_dir', default='', type=str,
 
 
 if __name__ == "__main__":
-    FLAGS = ng.Config('inpaint.yml')
+    # FLAGS = ng.Config('inpaint.yml')
+    FLAGS = yaml.load(open('inpaint.yml', 'r'), Loader=yaml.FullLoader)
     # ng.get_gpus(1)
     args, unknown = parser.parse_known_args()
 
     model = InpaintCAModel()
-    image = cv2.imread(args.image)
-    mask = cv2.imread(args.mask)
+    # image = cv2.imread(args.image)
+    # mask = cv2.imread(args.mask)
+    # TODO: check whether rgb or bgr
+    image = np.array(Image.open(args.image).convert('RGB'))
+    mask = np.array(Image.open(args.mask).convert('L'))
     # mask = cv2.resize(mask, (0,0), fx=0.5, fy=0.5)
 
     assert image.shape == mask.shape
@@ -42,7 +49,7 @@ if __name__ == "__main__":
     input_image = np.concatenate([image, mask], axis=2)
 
     sess_config = tf.compat.v1.ConfigProto()
-    sess_config.gpu_options.allow_growth = True
+    # sess_config.gpu_options.allow_growth = True
     with tf.compat.v1.Session(config=sess_config) as sess:
         input_image = tf.constant(input_image, dtype=tf.float32)
         output = model.build_server_graph(FLAGS, input_image)
