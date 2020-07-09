@@ -19,7 +19,7 @@ class Flatten(tf.keras.layers.Layer):
     def __init__(self, name):
         super(Flatten, self).__init__()
         # self.name = name
-    def call(self, inputs, training=True):
+    def call(self, x, training=True):
         flattened = tf.reshape(x, [tf.shape(x)[0], -1])
         return flattened
 
