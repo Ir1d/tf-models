@@ -1,8 +1,11 @@
 import os
 import glob
 import yaml
+import datetime
 
 import tensorflow as tf
+import numpy as np
+# tf.autograph.set_verbosity(3, True)
 # import neuralgym as ng
 
 from inpaint_model import InpaintGenerator, InpaintDiscriminator, gan_hinge_loss
@@ -91,10 +94,16 @@ if __name__ == "__main__":
     # data
     train_iter = get_train_iter(bs=FLAGS['batch_size'])
     val_iter = get_val_iter()
+    log_folder = 'logs/'
+    os.makedirs(log_folder, exist_ok=True)
+    current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    train_log_dir = os.path.join(log_folder, current_time, 'train')
+    # test_log_dir = 'logs/' + current_time + '/test'
+    train_summary_writer = tf.summary.create_file_writer(train_log_dir)
     # TODO: val images should be static and generated before running
 
     @tf.function
-    def train_step():
+    def train_step(iter_idx):
         with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
             # disable FLAGS['guided']
             batch_pos = next(train_iter)
@@ -140,9 +149,17 @@ if __name__ == "__main__":
         g_optimizer.apply_gradients(zip(gradients_of_generator, G.trainable_variables))
         d_optimizer.apply_gradients(zip(gradients_of_discriminator, D.trainable_variables))
 
+        # tensorboard
+        with train_summary_writer.as_default():
+            tf.summary.scalar('g_loss', losses['g_loss'], step=iter_idx)
+            tf.summary.scalar('d_loss', losses['d_loss'], step=iter_idx)
+            img = tf.reshape(batch_complete[0], (-1, 256, 256, 3))
+            tf.summary.image("train", img, step=iter_idx)
+
+
     for iter_idx in range(10):
     # for iter_idx in range(FLAGS['max_iters']):
-        train_step()
+        train_step(iter_idx)
 
     # train discriminator with secondary trainer, should initialize before
     # primary trainer.
