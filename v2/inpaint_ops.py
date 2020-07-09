@@ -153,12 +153,12 @@ def l2_norm(input_x, epsilon=1e-12):
     input_x_norm = input_x / (tf.reduce_sum(input_x**2)**0.5 + epsilon)
     return input_x_norm
 
-def power_iteration(u, ite):
-    v_ = tf.matmul(u, tf.transpose(w_mat))
-    v_hat = l2_norm(v_)
-    u_ = tf.matmul(v_hat, w_mat)
-    u_hat = l2_norm(u_)
-    return u_hat, v_hat, ite+1
+# def power_iteration(u, ite):
+#     v_ = tf.matmul(u, tf.transpose(w_mat))
+#     v_hat = l2_norm(v_)
+#     u_ = tf.matmul(v_hat, w_mat)
+#     u_hat = l2_norm(u_)
+#     return u_hat, v_hat, ite+1
 
 class kernel_spectral_norm(tf.keras.layers.Layer):
     def __init__(self, iteration=1, name='kernel_sn'):
@@ -171,7 +171,11 @@ class kernel_spectral_norm(tf.keras.layers.Layer):
         w_mat = tf.reshape(inputs, [-1, w_shape[-1]])
         u = tf.Variable(name='u', shape=[1, w_shape[-1]], initial_value=tf.random.truncated_normal(shape=[1, w_shape[-1]]), trainable=False)
 
-        u_hat, v_hat,_ = power_iteration(u, self.iteration)
+        # u_hat, v_hat,_ = power_iteration(u, self.iteration)
+        v_ = tf.matmul(u, tf.transpose(w_mat))
+        v_hat = l2_norm(v_)
+        u_ = tf.matmul(v_hat, w_mat)
+        u_hat = l2_norm(u_)
         sigma = tf.matmul(tf.matmul(v_hat, w_mat), tf.transpose(u_hat))
         w_mat = w_mat / sigma
         with tf.control_dependencies([u.assign(u_hat)]):
