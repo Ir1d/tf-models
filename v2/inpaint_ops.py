@@ -162,6 +162,7 @@ def power_iteration(u, ite):
 
 class kernel_spectral_norm(tf.keras.layers.Layer):
     def __init__(self, iteration=1, name='kernel_sn'):
+        super(kernel_spectral_norm, self).__init__()
         self.iteration = iteration
         # self.name = name
     def call(self, inputs):
