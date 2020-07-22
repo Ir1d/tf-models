@@ -234,10 +234,9 @@ if __name__ == "__main__":
         iter_idx = tf.convert_to_tensor(iter_idx, dtype=tf.int64)
         train_step(iter_idx)
         # val_step()
-
-        if iter_idx > 0 and iter_idx % 1 == 0:
+        # if iter_idx > 0 and iter_idx % 1 == 0:
+        if iter_idx > 0 and iter_idx % FLAGS['val_psteps'] == 0:
             tqdm.tqdm.write(str(iter_idx))
-        # if iter_idx > 0 and iter_idx % FLAGS['val_psteps'] == 0:
             psnr = []
             ds = val_ds.enumerate()
             # idx = tf.cast(0, tf.int64)
