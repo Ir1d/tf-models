@@ -1,5 +1,6 @@
 import os
 import glob
+import tqdm
 import yaml
 import datetime
 
@@ -87,6 +88,9 @@ if __name__ == "__main__":
 
     G = InpaintGenerator()
     D = InpaintDiscriminator()
+    G.load_weights('weights/G')
+    D.load_weights('weights/D')
+    print('Weight loaded successfully')
     lr = tf.Variable(name='lr', initial_value=1e-4, trainable=False, shape=[])
     d_optimizer = tf.keras.optimizers.Adam(learning_rate=lr, beta_1=0.5, beta_2=0.999)
     g_optimizer = d_optimizer
@@ -130,9 +134,9 @@ if __name__ == "__main__":
             losses['ae_loss'] += FLAGS['l1_loss_alpha'] * tf.reduce_mean(input_tensor=tf.abs(batch_pos - x2))
 
             batch_pos_neg = tf.concat([batch_pos, batch_complete], axis=0)
-            print('>> batch_pos_neg', batch_pos_neg.get_shape().as_list())
-            print('>> mask', mask.get_shape().as_list())
-            print('>> mask_new', tf.tile(mask, [FLAGS['batch_size'] * 2, 1, 1, 1]).get_shape().as_list())
+            # print('>> batch_pos_neg', batch_pos_neg.get_shape().as_list())
+            # print('>> mask', mask.get_shape().as_list())
+            # print('>> mask_new', tf.tile(mask, [FLAGS['batch_size'] * 2, 1, 1, 1]).get_shape().as_list())
             batch_pos_neg = tf.concat([batch_pos_neg, tf.tile(mask, [FLAGS['batch_size'] * 2, 1, 1, 1])], axis=3)
 
             # SNGAN
@@ -157,9 +161,18 @@ if __name__ == "__main__":
             tf.summary.image("train", img, step=iter_idx)
 
 
-    for iter_idx in range(10):
-    # for iter_idx in range(FLAGS['max_iters']):
+    # for iter_idx in range(10):
+    for iter_idx in tqdm.tqdm(range(FLAGS['max_iters'])):
+        iter_idx = tf.convert_to_tensor(iter_idx, dtype=tf.int64)
         train_step(iter_idx)
+        if iter_idx > 0 and iter_idx % FLAGS['train_spe'] == 0:
+            # val_step
+            G.save_weights('weights/G', save_format='tf')
+            D.save_weights('weights/D', save_format='tf')
+        # tf.saved_model.save(G, 'weigts/G')
+        # tf.saved_model.save(D, 'weigts/D')
+        # G.save('weights/G')
+        # D.save('weights/D')
 
     # train discriminator with secondary trainer, should initialize before
     # primary trainer.
