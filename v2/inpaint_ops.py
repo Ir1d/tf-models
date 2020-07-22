@@ -429,6 +429,7 @@ def resize_mask_like(mask, x):
 
     """
     shape = x.get_shape().as_list()[1:3]
+    # print(shape)
     mask_resize = tf.compat.v1.image.resize(images=mask, size=[shape[0], shape[1]], method=tf.image.ResizeMethod.NEAREST_NEIGHBOR, align_corners=True)
     # mask_resize = resize(
     #     mask, to_shape=,

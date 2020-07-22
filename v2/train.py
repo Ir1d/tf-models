@@ -16,6 +16,7 @@ def prepare_for_training(ds, shuffle_buffer_size=1000, batch_size=1, repeat=Fals
     # https://www.tensorflow.org/tutorials/load_data/images
     # places2 toooooo big cant cache
     ds = ds.shuffle(buffer_size=shuffle_buffer_size)
+    # print(repeat)
     if repeat:
         # Repeat forever for train
         ds = ds.repeat()
@@ -42,6 +43,18 @@ def process_path(file_path, resize=True):
         img = tf.image.resize(img, size=[256, 256])
     return img
 
+def process_val_pair(file_path, resize=True):
+    # load the raw data from the file as a string
+    gt_img = process_path(file_path, resize=True)
+    # read input image
+    input_path = tf.strings.regex_replace(file_path, '_output.png', '_input.png')
+    input_img = process_path(input_path, resize=True)
+    # read mask image
+    mask_path = tf.strings.regex_replace(file_path, '_output.png', '_mask.png')
+    mask_img = process_path(mask_path, resize=True)
+    mask_img = tf.image.rgb_to_grayscale(mask_img)
+    return input_img, gt_img, mask_img
+
 def get_train_iter(bs=1):
     data_dir = 'examples/places2/'
     list_ds = tf.data.Dataset.list_files(str(data_dir + '*_output.png'))
@@ -49,12 +62,15 @@ def get_train_iter(bs=1):
     train_ds = prepare_for_training(new_ds, batch_size=bs, repeat=True)
     return iter(train_ds)
 
-def get_val_iter(bs=1):
+def get_val_ds(bs=1):
     data_dir = 'examples/places2/'
     list_ds = tf.data.Dataset.list_files(str(data_dir + '*_output.png'))
-    new_ds = list_ds.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-    train_ds = prepare_for_training(new_ds, batch_size=bs, repeat=False)
-    return iter(train_ds)
+    new_ds = list_ds.map(process_val_pair, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    val_ds = prepare_for_training(new_ds, batch_size=bs, repeat=False)
+    num_elements = tf.data.experimental.cardinality(val_ds).numpy()
+    print('valset size:', num_elements)
+    return (val_ds), num_elements
+    # return iter(val_ds), num_elements
 
 if __name__ == "__main__":
     # training data
@@ -88,20 +104,24 @@ if __name__ == "__main__":
 
     G = InpaintGenerator()
     D = InpaintDiscriminator()
-    G.load_weights('weights/G')
-    D.load_weights('weights/D')
-    print('Weight loaded successfully')
+    # G.load_weights('weights/G')
+    # D.load_weights('weights/D')
+    # print('Weight loaded successfully')
     lr = tf.Variable(name='lr', initial_value=1e-4, trainable=False, shape=[])
     d_optimizer = tf.keras.optimizers.Adam(learning_rate=lr, beta_1=0.5, beta_2=0.999)
     g_optimizer = d_optimizer
 
     # data
     train_iter = get_train_iter(bs=FLAGS['batch_size'])
-    val_iter = get_val_iter()
+    val_ds, val_size = get_val_ds()
+    best_psnr = tf.constant(0.0) 
     log_folder = 'logs/'
     os.makedirs(log_folder, exist_ok=True)
     current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     train_log_dir = os.path.join(log_folder, current_time, 'train')
+    model_dir = os.path.join(log_folder, current_time, 'models')
+    os.makedirs(model_dir, exist_ok=True)
+    print('Logging to ', train_log_dir)
     # test_log_dir = 'logs/' + current_time + '/test'
     train_summary_writer = tf.summary.create_file_writer(train_log_dir)
     # TODO: val images should be static and generated before running
@@ -122,6 +142,7 @@ if __name__ == "__main__":
                 ),
                 tf.float32
             )
+            # mask is 0-1
             batch_incomplete = batch_pos*(1.-mask)
             xin = batch_incomplete
             # print(">>> xin", xin.get_shape().as_list())
@@ -154,21 +175,99 @@ if __name__ == "__main__":
         d_optimizer.apply_gradients(zip(gradients_of_discriminator, D.trainable_variables))
 
         # tensorboard
-        with train_summary_writer.as_default():
-            tf.summary.scalar('g_loss', losses['g_loss'], step=iter_idx)
-            tf.summary.scalar('d_loss', losses['d_loss'], step=iter_idx)
-            img = tf.reshape(batch_complete[0], (-1, 256, 256, 3))
-            tf.summary.image("train", img, step=iter_idx)
+        if iter_idx > 0 and iter_idx % FLAGS['viz_max_out'] == 0:
+            with train_summary_writer.as_default():
+                tf.summary.scalar('g_loss', losses['g_loss'], step=iter_idx)
+                tf.summary.scalar('d_loss', losses['d_loss'], step=iter_idx)
+                img = tf.reshape(batch_complete[0], (-1, 256, 256, 3))
+                tf.summary.image("train", img, step=iter_idx)
 
+    @tf.function
+    def val_step(input_img, gt_img, mask_img):
+            # global best_psnr
+            # print('idx', idx)
+            # xin = tf.stop_gradient(input_img)
+            # mask = tf.stop_gradient(mask_img)
+            xin = (input_img)
+            mask = (mask_img)
+            # mask already 0-1
+            # mask = mask / 255.0
+            # print(tf.math.reduce_max(mask))
+            # print(tf.math.reduce_max(xin))
+            # print(xin.get_shape().as_list())
+            # print(mask.get_shape().as_list())
+            x1, x2, offset_flow = G(xin, mask, training=False)
+            batch_predicted = x2
+
+            losses = {}
+            batch_complete = batch_predicted * mask + input_img * (1. - mask)
+            return batch_complete
+            # psnr += tf.image.psnr(gt_img, batch_complete[0], max_val=1)
+
+            # with train_summary_writer.as_default():
+            #     # img = tf.reshape(batch_complete[0], (-1, -1, -1, 3))
+            #     img = batch_complete[:1]
+            #     # tf.summary.image("val/%d"%idx, img, step=epoch)
+            #     tf.summary.image("val", img, step=val_size * epoch + idx)
+            #     # print(psnr.eval())
+
+            # idx += 1
+            # if (idx == val_size - 1):
+            #     # finished validation
+            #     if psnr > best_psnr:
+            #         print('Found better PSNR at ', psnr)
+            #         best_psnr = psnr
+            #         return best_psnr
+            #     else:
+            #         return best_psnr
+        #         # break
+        # with train_summary_writer.as_default():
+        #     psnr = tf.reduce_sum(psnr) / val_size
+        #     tf.summary.scalar('valPSNR', psnr, step=epoch)
+        #     print(psnr)
+        # return best_psnr
 
     # for iter_idx in range(10):
+    epoch = 0
+    epoch = tf.convert_to_tensor(epoch, dtype=tf.int64)
     for iter_idx in tqdm.tqdm(range(FLAGS['max_iters'])):
         iter_idx = tf.convert_to_tensor(iter_idx, dtype=tf.int64)
         train_step(iter_idx)
-        if iter_idx > 0 and iter_idx % FLAGS['train_spe'] == 0:
-            # val_step
-            G.save_weights('weights/G', save_format='tf')
-            D.save_weights('weights/D', save_format='tf')
+        # val_step()
+
+        if iter_idx > 0 and iter_idx % 1 == 0:
+            tqdm.tqdm.write(str(iter_idx))
+        # if iter_idx > 0 and iter_idx % FLAGS['val_psteps'] == 0:
+            psnr = []
+            ds = val_ds.enumerate()
+            # idx = tf.cast(0, tf.int64)
+            idxx = 0
+            for (input_img, gt_img, mask_img) in val_ds:
+                batch_complete = (val_step(input_img, gt_img, mask_img))
+                psnr.append(tf.image.psnr(gt_img, batch_complete[0], max_val=1))
+                with train_summary_writer.as_default():
+                    # img = tf.reshape(batch_complete[0], (-1, -1, -1, 3))
+                    img = batch_complete[:1]
+                    # tf.summary.image("val/%d"%idx, img, step=epoch)
+                    tf.summary.image("val/%d"%idxx, img, step=epoch)
+                idxx += 1
+            psnr = tf.reduce_sum(psnr) / val_size
+            with train_summary_writer.as_default():
+                # psnr = tf.reduce_sum(psnr) / val_size
+                tf.summary.scalar('valPSNR', psnr, step=epoch)
+                # print(psnr)
+            tqdm.tqdm.write(f'Cur {psnr} Best {best_psnr}')
+            # print('Cur ', psnr, 'Best ', best_psnr)
+            # print('new_best', new_best_psnr)
+            # if new_best_psnr != best_psnr:
+            if (psnr > best_psnr):
+                G.save_weights(os.path.join(model_dir, 'G'), save_format='tf')
+                D.save_weights(os.path.join(model_dir, 'D'), save_format='tf')
+                tqdm.tqdm.write('Saved models to %s' % os.path.join(model_dir, 'G'))
+                # best_psnr = new_best_psnr
+                best_psnr = psnr
+            epoch += 1
+            # val_step(epoch, best_psnr)
         # tf.saved_model.save(G, 'weigts/G')
         # tf.saved_model.save(D, 'weigts/D')
         # G.save('weights/G')
