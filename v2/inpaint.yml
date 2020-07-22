@@ -23,7 +23,9 @@ padding: 'SAME'
 
 # training
 train_spe: 4000
-max_iters: 100000000
+max_iters: 800000
+# https://github.com/JiahuiYu/generative_inpainting/issues/180#issuecomment-440174984
+# 100000000
 viz_max_out: 10
 val_psteps: 2000
 
