@@ -100,7 +100,7 @@ class InpaintGenerator(tf.keras.Model):
         ])
 
 
-    def call(self, x, mask, training):
+    def call(self, inputs, mask, training):
         """Inpaint network.
 
         Args:
@@ -109,6 +109,7 @@ class InpaintGenerator(tf.keras.Model):
         Returns:
             [-1, 1] as predicted image
         """
+        x = inputs
         xin = x
         offset_flow = None
         ones_x = tf.ones_like(x)[:, :, :, 0:1]
