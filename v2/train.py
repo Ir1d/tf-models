@@ -26,7 +26,7 @@ def prepare_for_training(ds, shuffle_buffer_size=1000, batch_size=1, repeat=Fals
     ds = ds.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
     return ds
 
-def decode_img(img):
+def decode_png(img):
     # convert the compressed string to a 3D uint8 tensor
     # use decode_png instead of decode_image https://stackoverflow.com/a/49101717/4597306
     img = tf.image.decode_png(img, channels=3)
@@ -35,29 +35,43 @@ def decode_img(img):
     # dont resize here, leave resize in the train loop to generate patches on-the-fly
     return img
 
-def process_path(file_path, resize=True):
+def decode_jpeg(img):
+    # convert the compressed string to a 3D uint8 tensor
+    # use decode_png instead of decode_image https://stackoverflow.com/a/49101717/4597306
+    img = tf.image.decode_jpeg(img, channels=3)
+    # Use `convert_image_dtype` to convert to floats in the [0,1] range.
+    img = tf.image.convert_image_dtype(img, tf.float32)
+    # dont resize here, leave resize in the train loop to generate patches on-the-fly
+    return img
+
+def process_path(file_path, resize=True, val=False):
     # load the raw data from the file as a string
     img = tf.io.read_file(file_path)
-    img = decode_img(img)
+    if val:
+        img = decode_png(img)
+    else:
+        img = decode_jpeg(img)
     if resize:
         img = tf.image.resize(img, size=[256, 256])
     return img
 
 def process_val_pair(file_path, resize=True):
     # load the raw data from the file as a string
-    gt_img = process_path(file_path, resize=True)
+    gt_img = process_path(file_path, resize=True, val=True)
     # read input image
     input_path = tf.strings.regex_replace(file_path, '_output.png', '_input.png')
-    input_img = process_path(input_path, resize=True)
+    input_img = process_path(input_path, resize=True, val=True)
     # read mask image
     mask_path = tf.strings.regex_replace(file_path, '_output.png', '_mask.png')
-    mask_img = process_path(mask_path, resize=True)
+    mask_img = process_path(mask_path, resize=True, val=True)
     mask_img = tf.image.rgb_to_grayscale(mask_img)
     return input_img, gt_img, mask_img
 
 def get_train_iter(bs=1):
-    data_dir = 'examples/places2/'
-    list_ds = tf.data.Dataset.list_files(str(data_dir + '*_output.png'))
+    data_dir = '/home/ir1d/data_large/'
+    list_ds = tf.data.Dataset.list_files(str(data_dir + '**/*.jpg'))
+    # data_dir = 'examples/places2/'
+    # list_ds = tf.data.Dataset.list_files(str(data_dir + '*_output.png'))
     new_ds = list_ds.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
     train_ds = prepare_for_training(new_ds, batch_size=bs, repeat=True)
     return iter(train_ds)
