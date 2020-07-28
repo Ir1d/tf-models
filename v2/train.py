@@ -69,7 +69,7 @@ def process_val_pair(file_path, resize=True):
 
 def get_train_iter(bs=1):
     data_dir = '/home/ir1d/data_large/'
-    list_ds = tf.data.Dataset.list_files(str(data_dir + '**/*.jpg'))
+    list_ds = tf.data.Dataset.list_files(str(data_dir + '*/*/*.jpg'))
     # data_dir = 'examples/places2/'
     # list_ds = tf.data.Dataset.list_files(str(data_dir + '*_output.png'))
     new_ds = list_ds.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
