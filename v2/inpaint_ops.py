@@ -178,8 +178,10 @@ class kernel_spectral_norm(tf.keras.layers.Layer):
         u_hat = l2_norm(u_)
         sigma = tf.matmul(tf.matmul(v_hat, w_mat), tf.transpose(u_hat))
         w_mat = w_mat / sigma
-        with tf.control_dependencies([u.assign(u_hat)]):
-            w_norm = tf.reshape(w_mat, w_shape)
+        # u.assign(u_hat)
+        w_norm = tf.reshape(w_mat, w_shape)
+        # with tf.control_dependencies([u.assign(u_hat)]):
+        #     w_norm = tf.reshape(w_mat, w_shape)
         return w_norm
     
 
