@@ -47,10 +47,11 @@ def decode_jpeg(img):
 def process_path(file_path, resize=True, val=False):
     # load the raw data from the file as a string
     img = tf.io.read_file(file_path)
-    if val:
-        img = decode_png(img)
-    else:
-        img = decode_jpeg(img)
+    img = decode_png(img)
+    # if val:
+    #     img = decode_png(img)
+    # else:
+    #     img = decode_jpeg(img)
     if resize:
         img = tf.image.resize(img, size=[256, 256])
     return img
@@ -69,7 +70,9 @@ def process_val_pair(file_path, resize=True):
 
 def get_train_iter(bs=1):
     data_dir = '/home/ir1d/data_large/'
-    list_ds = tf.data.Dataset.list_files(str(data_dir + '*/*/*.jpg'))
+    data_dir = '/data/datasets/places2/train/'
+    list_ds = tf.data.Dataset.list_files(str(data_dir + '*.png'))
+    # list_ds = tf.data.Dataset.list_files(str(data_dir + '*/*/*.jpg'))
     # data_dir = 'examples/places2/'
     # list_ds = tf.data.Dataset.list_files(str(data_dir + '*_output.png'))
     new_ds = list_ds.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
