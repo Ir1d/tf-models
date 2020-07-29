@@ -134,11 +134,14 @@ if __name__ == "__main__":
     # D.load_weights('weights/D')
 
     # data
+    print('Getting training dataset')
     train_ds = get_train_ds(bs=FLAGS['batch_size'] * GPU_NUM)
+    print('Got training dataset')
     train_ds = strategy.experimental_distribute_dataset(train_ds)
+    print('Distributed training dataset')
     train_iter = iter(train_ds)
     val_ds, val_size = get_val_ds()
-    val_ds = strategy.experimental_distribute_dataset(val_ds)
+    # val_ds = strategy.experimental_distribute_dataset(val_ds)
     best_psnr = tf.constant(0.0)
     log_folder = 'logs/'
     os.makedirs(log_folder, exist_ok=True)
@@ -151,7 +154,7 @@ if __name__ == "__main__":
     train_summary_writer = tf.summary.create_file_writer(train_log_dir)
     # TODO: val images should be static and generated before running
 
-    @tf.function
+    # @tf.function
     def train_step(iter_idx, batch_pos):
         with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
             # disable FLAGS['guided']
@@ -223,7 +226,7 @@ if __name__ == "__main__":
             # print(tf.math.reduce_max(xin))
             # print(xin.get_shape().as_list())
             # print(mask.get_shape().as_list())
-            x1, x2, offset_flow = G(xin, mask, training=False)
+            x1, x2, offset_flow = G(xin, mask, training=True)
             batch_predicted = x2
 
             losses = {}
@@ -258,13 +261,13 @@ if __name__ == "__main__":
     def distributed_train_step(idx, dataset_inputs):
         strategy.run(train_step, args=(idx, dataset_inputs,))
         # per_replica_losses = strategy.run(train_step, args=(dataset_inputs,))
-        strategy.reduce(tf.distribute.ReduceOp.SUM, per_replica_losses[0], axis=None)
-        strategy.reduce(tf.distribute.ReduceOp.SUM, per_replica_losses[1], axis=None)
+        # strategy.reduce(tf.distribute.ReduceOp.SUM, per_replica_losses[0], axis=None)
+        # strategy.reduce(tf.distribute.ReduceOp.SUM, per_replica_losses[1], axis=None)
         # return strategy.reduce(tf.distribute.ReduceOp.SUM, per_replica_losses, axis=None)
 
     @tf.function
-    def distributed_val_step(dataset_inputs):
-        return strategy.run(val_step, args=(dataset_inputs,))
+    def distributed_val_step(input_img, gt_img, mask_img):
+        return strategy.run(val_step, args=(input_img, gt_img, mask_img,))
 
 
     # for iter_idx in range(10):
@@ -272,6 +275,7 @@ if __name__ == "__main__":
     epoch = tf.convert_to_tensor(epoch, dtype=tf.int64)
     for iter_idx in tqdm.tqdm(range(FLAGS['max_iters'])):
         iter_idx = tf.convert_to_tensor(iter_idx, dtype=tf.int64)
+        print('Running training step', iter_idx)
         distributed_train_step(iter_idx, next(train_iter))
         # train_step(iter_idx)
         # val_step()
@@ -279,12 +283,12 @@ if __name__ == "__main__":
         if iter_idx > 0 and iter_idx % FLAGS['val_psteps'] == 0:
             tqdm.tqdm.write(str(iter_idx))
             psnr = []
-            ds = val_ds.enumerate()
+            # ds = val_ds.enumerate()
             # idx = tf.cast(0, tf.int64)
             idxx = 0
             for (input_img, gt_img, mask_img) in val_ds:
-                batch_complete = (distributed_val_step(input_img, gt_img, mask_img))
-                # batch_complete = (val_step(input_img, gt_img, mask_img))
+                # batch_complete = (distributed_val_step(input_img, gt_img, mask_img))
+                batch_complete = (val_step(input_img, gt_img, mask_img))
                 psnr.append(tf.image.psnr(gt_img, batch_complete[0], max_val=1))
                 with train_summary_writer.as_default():
                     # img = tf.reshape(batch_complete[0], (-1, -1, -1, 3))
