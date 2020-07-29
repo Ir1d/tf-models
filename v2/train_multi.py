@@ -273,7 +273,7 @@ if __name__ == "__main__":
     # for iter_idx in range(10):
     epoch = 0
     epoch = tf.convert_to_tensor(epoch, dtype=tf.int64)
-    for iter_idx in tqdm.tqdm(range(FLAGS['max_iters'])):
+    for iter_idx in tqdm.tqdm(range(FLAGS['max_iters'] // GPU_NUM)):
         iter_idx = tf.convert_to_tensor(iter_idx, dtype=tf.int64)
         print('Running training step', iter_idx)
         distributed_train_step(iter_idx, next(train_iter))
