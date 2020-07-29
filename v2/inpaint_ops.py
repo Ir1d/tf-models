@@ -251,7 +251,8 @@ class conv2d_spectral_norm(tf.keras.layers.Layer):
 
     # def build()
     def call(self, inputs, training=True):
-        return self.layer.apply(inputs)
+        return self.layer(inputs)
+        # return self.layer.apply(inputs)
 
 
 class DisConvLayer(tf.keras.layers.Layer):
