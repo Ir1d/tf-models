@@ -128,6 +128,9 @@ if __name__ == "__main__":
     d_optimizer = tf.keras.optimizers.Adam(learning_rate=lr, beta_1=0.5, beta_2=0.999)
     g_optimizer = d_optimizer
 
+    G.load_weights('logs/20200729-160205/models/G')
+    D.load_weights('logs/20200729-160205/models/D')
+
     # data
     train_iter = get_train_iter(bs=FLAGS['batch_size'])
     val_ds, val_size = get_val_ds()
@@ -207,6 +210,7 @@ if __name__ == "__main__":
             # mask = tf.stop_gradient(mask_img)
             xin = (input_img)
             mask = (mask_img)
+            xin = xin*(1.-mask)
             # mask already 0-1
             # mask = mask / 255.0
             # print(tf.math.reduce_max(mask))
