@@ -130,8 +130,8 @@ if __name__ == "__main__":
         lr = tf.Variable(name='lr', initial_value=1e-4, trainable=False, shape=[])
         d_optimizer = tf.keras.optimizers.Adam(learning_rate=lr, beta_1=0.5, beta_2=0.999)
         g_optimizer = d_optimizer
-    # G.load_weights('weights/G')
-    # D.load_weights('weights/D')
+        G.load_weights('logs/20200729-160302/models/G')
+        D.load_weights('logs/20200729-160302/models/D')
 
     # data
     print('Getting training dataset')
@@ -220,6 +220,7 @@ if __name__ == "__main__":
             # mask = tf.stop_gradient(mask_img)
             xin = (input_img)
             mask = (mask_img)
+            xin = xin*(1.-mask)
             # mask already 0-1
             # mask = mask / 255.0
             # print(tf.math.reduce_max(mask))
@@ -275,7 +276,7 @@ if __name__ == "__main__":
     epoch = tf.convert_to_tensor(epoch, dtype=tf.int64)
     for iter_idx in tqdm.tqdm(range(FLAGS['max_iters'] // GPU_NUM)):
         iter_idx = tf.convert_to_tensor(iter_idx, dtype=tf.int64)
-        print('Running training step', iter_idx)
+        # print('Running training step', iter_idx)
         distributed_train_step(iter_idx, next(train_iter))
         # train_step(iter_idx)
         # val_step()
