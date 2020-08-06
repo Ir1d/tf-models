@@ -3,7 +3,6 @@
 from __future__ import division
 import os, time, scipy.io
 import tensorflow as tf
-import tf_slim as slim
 import numpy as np
 import rawpy
 import glob
@@ -13,8 +12,11 @@ from PIL import Image
 
 input_dir = './dataset/Sony/short/'
 gt_dir = './dataset/Sony/long/'
-checkpoint_dir = './result_Sony/'
+checkpoint_dir = './checkpoint/Sony/'
 result_dir = './result_Sony/'
+
+os.makedirs(result_dir, exist_ok=True)
+os.makedirs(checkpoint_dir, exist_ok=True)
 
 log_folder = 'logs/'
 os.makedirs(log_folder, exist_ok=True)
