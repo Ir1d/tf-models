@@ -7,11 +7,20 @@ import tf_slim as slim
 import numpy as np
 import rawpy
 import glob
+import tqdm
+import datetime
+from PIL import Image
 
 input_dir = './dataset/Sony/short/'
 gt_dir = './dataset/Sony/long/'
 checkpoint_dir = './result_Sony/'
 result_dir = './result_Sony/'
+
+log_folder = 'logs/'
+os.makedirs(log_folder, exist_ok=True)
+current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+train_log_dir = os.path.join(log_folder, current_time, 'train')
+train_summary_writer = tf.summary.create_file_writer(train_log_dir)
 
 # get train IDs
 train_fns = glob.glob(gt_dir + '0*.ARW')
@@ -25,11 +34,11 @@ if DEBUG == 1:
     save_freq = 2
     train_ids = train_ids[0:5]
 
-@tf.function
-def lrelu(x):
-    return tf.maximum(x * 0.2, x)
+# @tf.function
+# def lrelu(x):
+#     return tf.maximum(x * 0.2, x)
 
-@tf.function
+# @tf.function
 def upsample_and_concat(x1, x2, output_channels, in_channels):
     pool_size = 2
     deconv_filter = tf.Variable(tf.random.truncated_normal([pool_size, pool_size, output_channels, in_channels], stddev=0.02))
@@ -139,24 +148,24 @@ def pack_raw(raw):
                           im[1:H:2, 0:W:2, :]), axis=2)
     return out
 
+net = NetWork()
+# sess = tf.compat.v1.Session()
+# in_image = tf.compat.v1.placeholder(tf.float32, [None, None, None, 4])
+# gt_image = tf.compat.v1.placeholder(tf.float32, [None, None, None, 3])
+# out_image = network(in_image)
 
-sess = tf.compat.v1.Session()
-in_image = tf.compat.v1.placeholder(tf.float32, [None, None, None, 4])
-gt_image = tf.compat.v1.placeholder(tf.float32, [None, None, None, 3])
-out_image = network(in_image)
-
-G_loss = tf.reduce_mean(input_tensor=tf.abs(out_image - gt_image))
+# G_loss = tf.reduce_mean(input_tensor=tf.abs(out_image - gt_image))
 
 # t_vars = tf.compat.v1.trainable_variables()
-lr = tf.compat.v1.placeholder(tf.float32)
-G_opt = tf.compat.v1.train.AdamOptimizer(learning_rate=lr).minimize(G_loss)
+# lr = tf.compat.v1.placeholder(tf.float32)
+# G_opt = tf.compat.v1.train.AdamOptimizer(learning_rate=lr).minimize(G_loss)
 
-saver = tf.compat.v1.train.Saver()
-sess.run(tf.compat.v1.global_variables_initializer())
-ckpt = tf.train.get_checkpoint_state(checkpoint_dir)
-if ckpt:
-    print('loaded ' + ckpt.model_checkpoint_path)
-    saver.restore(sess, ckpt.model_checkpoint_path)
+# saver = tf.compat.v1.train.Saver()
+# sess.run(tf.compat.v1.global_variables_initializer())
+# ckpt = tf.train.get_checkpoint_state(checkpoint_dir)
+# if ckpt:
+#     print('loaded ' + ckpt.model_checkpoint_path)
+#     saver.restore(sess, ckpt.model_checkpoint_path)
 
 # Raw data takes long time to load. Keep them in memory after loaded.
 gt_images = [None] * 6000
@@ -169,18 +178,21 @@ g_loss = np.zeros((5000, 1))
 
 allfolders = glob.glob(result_dir + '*0')
 lastepoch = 0
-for folder in allfolders:
-    lastepoch = np.maximum(lastepoch, int(folder[-4:]))
+# for folder in allfolders:
+#     lastepoch = np.maximum(lastepoch, int(folder[-4:]))
 
 learning_rate = 1e-4
-for epoch in range(lastepoch, 4001):
+lr = tf.Variable(name='lr', initial_value=learning_rate, trainable=False, shape=[])
+optimizer = tf.keras.optimizers.Adam(learning_rate=lr, beta_1=0.5, beta_2=0.999)
+var_list_fn = lambda: net.trainable_weights
+for epoch in tqdm.tqdm(range(lastepoch, 4001)):
     if os.path.isdir(result_dir + '%04d' % epoch):
         continue
     cnt = 0
-    if epoch > 2000:
-        learning_rate = 1e-5
+    # if epoch > 2000:
+    #     learning_rate = 1e-5
 
-    for ind in np.random.permutation(len(train_ids)):
+    for ind in tqdm.tqdm(np.random.permutation(len(train_ids))):
         # get the path from image id
         train_id = train_ids[ind]
         in_files = glob.glob(input_dir + '%05d_00*.ARW' % train_id)
@@ -225,20 +237,45 @@ for epoch in range(lastepoch, 4001):
             gt_patch = np.transpose(gt_patch, (0, 2, 1, 3))
 
         input_patch = np.minimum(input_patch, 1.0)
+        
+        with tf.GradientTape() as tape:
+            output = net(input_patch)
+            G_loss = tf.reduce_mean(input_tensor=tf.abs(output - gt_patch))
+            # loss_fn = lambda: tf.keras.losses.MAE(gt_patch, output)
+            # G_loss = loss_fn()
+            gradients_of_generator = tape.gradient(G_loss, net.trainable_variables)
+            optimizer.apply_gradients(zip(gradients_of_generator, net.trainable_variables))
+            # optimizer.minimize(loss_fn, var_list=var_list_fn)
 
-        _, G_current, output = sess.run([G_opt, G_loss, out_image],
-                                        feed_dict={in_image: input_patch, gt_image: gt_patch, lr: learning_rate})
-        output = np.minimum(np.maximum(output, 0), 1)
-        g_loss[ind] = G_current
+            # _, G_current, output = sess.run([G_opt, G_loss, out_image],
+            #                                 feed_dict={in_image: input_patch, gt_image: gt_patch, lr: learning_rate})
+            output = np.minimum(np.maximum(output, 0), 1)
+            g_loss[ind] = G_loss
+        
+        # with train_summary_writer.as_default():
+        #     # img = tf.reshape(batch_complete[0], (-1, -1, -1, 3))
+        #     img = tf.concat([output[:1], gt_patch[:1]], axis=2)
+        #     # img = output[:1]
+        #     # tf.summary.image("val/%d"%idx, img, step=epoch)
+        #     tf.summary.image("train", img, step=(epoch * len(train_ids) + ind))
 
-        print("%d %d Loss=%.3f Time=%.3f" % (epoch, cnt, np.mean(g_loss[np.where(g_loss)]), time.time() - st))
+        tqdm.tqdm.write("%d %d Avg Loss=%.3f Time=%.3f" % (epoch, cnt, np.mean(g_loss[np.where(g_loss)]), time.time() - st))
 
-        if epoch % save_freq == 0:
-            if not os.path.isdir(result_dir + '%04d' % epoch):
-                os.makedirs(result_dir + '%04d' % epoch)
+    if epoch % save_freq == 0:
+        # if not os.path.isdir(result_dir + '%04d' % epoch):
+        # os.makedirs(result_dir + '%04d' % epoch, exist_ok=True)
 
-            temp = np.concatenate((gt_patch[0, :, :, :], output[0, :, :, :]), axis=1)
-            scipy.misc.toimage(temp * 255, high=255, low=0, cmin=0, cmax=255).save(
-                result_dir + '%04d/%05d_00_train_%d.jpg' % (epoch, train_id, ratio))
+        temp = np.concatenate((gt_patch[0, :, :, :], output[0, :, :, :]), axis=1)
+        Image.fromarray((temp * 255).astype('uint8').clip(min=0, max=255)).save(
+                result_dir + '%04d_%05d_00_train_%d.jpg' % (epoch, train_id, ratio))
+                # result_dir + '%04d/%05d_00_train_%d.jpg' % (epoch, train_id, ratio))
+        # scipy.misc.toimage(temp * 255, high=255, low=0, cmin=0, cmax=255).save(
+        #     result_dir + '%04d/%05d_00_train_%d.jpg' % (epoch, train_id, ratio))
 
-    saver.save(sess, checkpoint_dir + 'model.ckpt')
+        with train_summary_writer.as_default():
+            img = tf.concat([output[:1], gt_patch[:1]], axis=2)
+            tf.summary.image("train", img, step=(epoch))
+
+    net.save_weights(checkpoint_dir, save_format='tf')
+    tqdm.tqdm.write('Saved models to %s' % checkpoint_dir)
+    # saver.save(sess, checkpoint_dir + 'model.ckpt')
