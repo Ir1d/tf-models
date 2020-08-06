@@ -25,11 +25,11 @@ if DEBUG == 1:
     save_freq = 2
     train_ids = train_ids[0:5]
 
-
+@tf.function
 def lrelu(x):
     return tf.maximum(x * 0.2, x)
 
-
+@tf.function
 def upsample_and_concat(x1, x2, output_channels, in_channels):
     pool_size = 2
     deconv_filter = tf.Variable(tf.random.truncated_normal([pool_size, pool_size, output_channels, in_channels], stddev=0.02))
@@ -40,47 +40,88 @@ def upsample_and_concat(x1, x2, output_channels, in_channels):
 
     return deconv_output
 
+class NetWork(tf.keras.Model):
+    def __init__(self):
+        super(NetWork, self).__init__()
+        self.conv1 = tf.keras.Sequential([
+            tf.keras.layers.Conv2D(filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv1"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
+            tf.keras.layers.Conv2D(filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv2"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
+        ])
 
-def network(input):
-    conv1 = slim.conv2d(input, 32, [3, 3], rate=1, activation_fn=lrelu, scope='g_conv1_1')
-    conv1 = slim.conv2d(conv1, 32, [3, 3], rate=1, activation_fn=lrelu, scope='g_conv1_2')
-    pool1 = slim.max_pool2d(conv1, [2, 2], padding='SAME')
+        self.conv2 = tf.keras.Sequential([
+            tf.keras.layers.Conv2D(filters=64, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv3"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
+            tf.keras.layers.Conv2D(filters=64, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv4"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
+        ])
 
-    conv2 = slim.conv2d(pool1, 64, [3, 3], rate=1, activation_fn=lrelu, scope='g_conv2_1')
-    conv2 = slim.conv2d(conv2, 64, [3, 3], rate=1, activation_fn=lrelu, scope='g_conv2_2')
-    pool2 = slim.max_pool2d(conv2, [2, 2], padding='SAME')
+        self.conv3 = tf.keras.Sequential([
+            tf.keras.layers.Conv2D(filters=128, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv5"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
+            tf.keras.layers.Conv2D(filters=128, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv6"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
+        ])
 
-    conv3 = slim.conv2d(pool2, 128, [3, 3], rate=1, activation_fn=lrelu, scope='g_conv3_1')
-    conv3 = slim.conv2d(conv3, 128, [3, 3], rate=1, activation_fn=lrelu, scope='g_conv3_2')
-    pool3 = slim.max_pool2d(conv3, [2, 2], padding='SAME')
+        self.conv4 = tf.keras.Sequential([
+            tf.keras.layers.Conv2D(filters=256, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv7"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
+            tf.keras.layers.Conv2D(filters=256, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv8"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
+        ])
 
-    conv4 = slim.conv2d(pool3, 256, [3, 3], rate=1, activation_fn=lrelu, scope='g_conv4_1')
-    conv4 = slim.conv2d(conv4, 256, [3, 3], rate=1, activation_fn=lrelu, scope='g_conv4_2')
-    pool4 = slim.max_pool2d(conv4, [2, 2], padding='SAME')
+        self.conv5 = tf.keras.Sequential([
+            tf.keras.layers.Conv2D(filters=512, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv9"),
+            tf.keras.layers.Conv2D(filters=512, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv10"),
+        ])
 
-    conv5 = slim.conv2d(pool4, 512, [3, 3], rate=1, activation_fn=lrelu, scope='g_conv5_1')
-    conv5 = slim.conv2d(conv5, 512, [3, 3], rate=1, activation_fn=lrelu, scope='g_conv5_2')
+        self.conv6 = tf.keras.Sequential([
+            tf.keras.layers.Conv2D(filters=256, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv11"),
+            tf.keras.layers.Conv2D(filters=256, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv12"),
+        ])
 
-    up6 = upsample_and_concat(conv5, conv4, 256, 512)
-    conv6 = slim.conv2d(up6, 256, [3, 3], rate=1, activation_fn=lrelu, scope='g_conv6_1')
-    conv6 = slim.conv2d(conv6, 256, [3, 3], rate=1, activation_fn=lrelu, scope='g_conv6_2')
+        self.conv7 = tf.keras.Sequential([
+            tf.keras.layers.Conv2D(filters=128, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv11"),
+            tf.keras.layers.Conv2D(filters=128, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv12"),
+        ])
 
-    up7 = upsample_and_concat(conv6, conv3, 128, 256)
-    conv7 = slim.conv2d(up7, 128, [3, 3], rate=1, activation_fn=lrelu, scope='g_conv7_1')
-    conv7 = slim.conv2d(conv7, 128, [3, 3], rate=1, activation_fn=lrelu, scope='g_conv7_2')
+        self.conv8 = tf.keras.Sequential([
+            tf.keras.layers.Conv2D(filters=64, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv13"),
+            tf.keras.layers.Conv2D(filters=64, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv14"),
+        ])
 
-    up8 = upsample_and_concat(conv7, conv2, 64, 128)
-    conv8 = slim.conv2d(up8, 64, [3, 3], rate=1, activation_fn=lrelu, scope='g_conv8_1')
-    conv8 = slim.conv2d(conv8, 64, [3, 3], rate=1, activation_fn=lrelu, scope='g_conv8_2')
+        self.conv9 = tf.keras.Sequential([
+            tf.keras.layers.Conv2D(filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv15"),
+            tf.keras.layers.Conv2D(filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv16"),
+        ])
 
-    up9 = upsample_and_concat(conv8, conv1, 32, 64)
-    conv9 = slim.conv2d(up9, 32, [3, 3], rate=1, activation_fn=lrelu, scope='g_conv9_1')
-    conv9 = slim.conv2d(conv9, 32, [3, 3], rate=1, activation_fn=lrelu, scope='g_conv9_2')
+        self.conv10 = tf.keras.Sequential([
+            tf.keras.layers.Conv2D(filters=12, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv16"),
+        ])
 
-    conv10 = slim.conv2d(conv9, 12, [1, 1], rate=1, activation_fn=None, scope='g_conv10')
-    out = tf.compat.v1.depth_to_space(input=conv10, block_size=2)
-    return out
-
+    def call(self, x):
+        conv1 = self.conv1(x)
+        pool1 = tf.nn.max_pool2d(conv1, ksize=2, strides=2, padding='SAME')
+        conv2 = self.conv2(pool1)
+        pool2 = tf.nn.max_pool2d(conv2, ksize=2, strides=2, padding='SAME')
+        conv3 = self.conv3(pool2)
+        pool3 = tf.nn.max_pool2d(conv3, ksize=2, strides=2, padding='SAME')
+        conv4 = self.conv4(pool3)
+        pool4 = tf.nn.max_pool2d(conv4, ksize=2, strides=2, padding='SAME')
+        conv5 = self.conv5(pool4)
+        # pool5 = tf.nn.max_pool2d(conv5, ksize=2, strides=2, padding='SAME')
+        up6 = upsample_and_concat(conv5, conv4, 256, 512)
+        conv6 = self.conv6(up6)
+        up7 = upsample_and_concat(conv6, conv3, 128, 256)
+        conv7 = self.conv7(up7)
+        up8 = upsample_and_concat(conv7, conv2, 64, 128)
+        conv8 = self.conv8(up8)
+        up9 = upsample_and_concat(conv8, conv1, 32, 64)
+        conv9 = self.conv9(up9)
+        conv10 = self.conv10(conv9)
+        out = tf.nn.depth_to_space(input=conv10, block_size=2)
+        return out
 
 def pack_raw(raw):
     # pack Bayer image to 4 channels
@@ -106,7 +147,7 @@ out_image = network(in_image)
 
 G_loss = tf.reduce_mean(input_tensor=tf.abs(out_image - gt_image))
 
-t_vars = tf.compat.v1.trainable_variables()
+# t_vars = tf.compat.v1.trainable_variables()
 lr = tf.compat.v1.placeholder(tf.float32)
 G_opt = tf.compat.v1.train.AdamOptimizer(learning_rate=lr).minimize(G_loss)
 
