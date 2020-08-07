@@ -84,27 +84,36 @@ class NetWork(tf.keras.Model):
 
         self.conv5 = tf.keras.Sequential([
             tf.keras.layers.Conv2D(filters=512, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv9"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
             tf.keras.layers.Conv2D(filters=512, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv10"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv6 = tf.keras.Sequential([
             tf.keras.layers.Conv2D(filters=256, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv11"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
             tf.keras.layers.Conv2D(filters=256, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv12"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv7 = tf.keras.Sequential([
             tf.keras.layers.Conv2D(filters=128, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv11"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
             tf.keras.layers.Conv2D(filters=128, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv12"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv8 = tf.keras.Sequential([
             tf.keras.layers.Conv2D(filters=64, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv13"),
             tf.keras.layers.Conv2D(filters=64, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv14"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv9 = tf.keras.Sequential([
             tf.keras.layers.Conv2D(filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv15"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
             tf.keras.layers.Conv2D(filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv16"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv10 = tf.keras.Sequential([
@@ -151,6 +160,7 @@ def pack_raw(raw):
     return out
 
 net = NetWork()
+# net.load_weights(checkpoint_dir) # 1642 epoch
 # sess = tf.compat.v1.Session()
 # in_image = tf.compat.v1.placeholder(tf.float32, [None, None, None, 4])
 # gt_image = tf.compat.v1.placeholder(tf.float32, [None, None, None, 3])
@@ -191,8 +201,11 @@ for epoch in tqdm.tqdm(range(lastepoch, 4001)):
     if os.path.isdir(result_dir + '%04d' % epoch):
         continue
     cnt = 0
-    # if epoch > 2000:
-    #     learning_rate = 1e-5
+    if epoch == 2000:
+        lr = tf.Variable(name='lr', initial_value=1e-5, trainable=False, shape=[])
+        optimizer = tf.keras.optimizers.Adam(learning_rate=lr, beta_1=0.5, beta_2=0.999)
+        tqdm.tqdm.write("Learning rate changed to 1e-5")
+        # learning_rate = 1e-5
 
     for ind in tqdm.tqdm(np.random.permutation(len(train_ids))):
         # get the path from image id
