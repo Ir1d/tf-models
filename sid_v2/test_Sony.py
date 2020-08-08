@@ -80,31 +80,40 @@ class NetWork(tf.keras.Model):
 
         self.conv5 = tf.keras.Sequential([
             tf.keras.layers.Conv2D(filters=512, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv9"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
             tf.keras.layers.Conv2D(filters=512, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv10"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv6 = tf.keras.Sequential([
             tf.keras.layers.Conv2D(filters=256, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv11"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
             tf.keras.layers.Conv2D(filters=256, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv12"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv7 = tf.keras.Sequential([
             tf.keras.layers.Conv2D(filters=128, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv11"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
             tf.keras.layers.Conv2D(filters=128, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv12"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv8 = tf.keras.Sequential([
             tf.keras.layers.Conv2D(filters=64, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv13"),
             tf.keras.layers.Conv2D(filters=64, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv14"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv9 = tf.keras.Sequential([
             tf.keras.layers.Conv2D(filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv15"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
             tf.keras.layers.Conv2D(filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv16"),
+            tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv10 = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(filters=12, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv16"),
+            tf.keras.layers.Conv2D(filters=12, kernel_size=1, strides=1, padding="SAME", name=self.name + "_conv16"),
         ])
 
     def call(self, x):
@@ -148,7 +157,7 @@ def pack_raw(raw):
 
 net = NetWork()
 
-net.load_weights(result_dir)
+net.load_weights(checkpoint_dir)
 
 # if not os.path.isdir(result_dir + 'final/'):
 os.makedirs(result_dir + 'final/', exist_ok=True)
