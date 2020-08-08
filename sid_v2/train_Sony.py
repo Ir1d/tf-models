@@ -195,7 +195,7 @@ lastepoch = 0
 
 learning_rate = 1e-4
 lr = tf.Variable(name='lr', initial_value=learning_rate, trainable=False, shape=[])
-optimizer = tf.keras.optimizers.Adam(learning_rate=lr, beta_1=0.5, beta_2=0.999)
+optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
 var_list_fn = lambda: net.trainable_weights
 for epoch in tqdm.tqdm(range(lastepoch, 4001)):
     if os.path.isdir(result_dir + '%04d' % epoch):
@@ -203,7 +203,7 @@ for epoch in tqdm.tqdm(range(lastepoch, 4001)):
     cnt = 0
     if epoch == 2000:
         lr = tf.Variable(name='lr', initial_value=1e-5, trainable=False, shape=[])
-        optimizer = tf.keras.optimizers.Adam(learning_rate=lr, beta_1=0.5, beta_2=0.999)
+        optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
         tqdm.tqdm.write("Learning rate changed to 1e-5")
         # learning_rate = 1e-5
 
