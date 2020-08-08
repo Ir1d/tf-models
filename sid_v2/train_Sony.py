@@ -117,7 +117,7 @@ class NetWork(tf.keras.Model):
         ])
 
         self.conv10 = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(filters=12, kernel_size=1, strides=1, padding="SAME", name=self.name + "_conv16"),
+            tf.keras.layers.Conv2D(filters=12, kernel_size=1, strides=1, padding="SAME", name=self.name + "_conv17"),
         ])
 
     def call(self, x):
