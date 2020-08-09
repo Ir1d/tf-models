@@ -40,17 +40,6 @@ if DEBUG == 1:
 # def lrelu(x):
 #     return tf.maximum(x * 0.2, x)
 
-# @tf.function
-def upsample_and_concat_ori(x1, x2, output_channels, in_channels):
-    pool_size = 2
-    deconv_filter = tf.Variable(tf.random.truncated_normal([pool_size, pool_size, output_channels, in_channels], stddev=0.02))
-    deconv = tf.nn.conv2d_transpose(x1, deconv_filter, tf.shape(input=x2), strides=[1, pool_size, pool_size, 1])
-
-    deconv_output = tf.concat([deconv, x2], 3)
-    deconv_output.set_shape([None, None, None, output_channels * 2])
-
-    return deconv_output
-
 class upsample_and_concat(tf.keras.layers.Layer):
     def __init__(self, output_channels, in_channels):
         super(upsample_and_concat, self).__init__()

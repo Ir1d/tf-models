@@ -37,15 +37,19 @@ if DEBUG == 1:
 #     print('loaded ' + ckpt.model_checkpoint_path)
 #     saver.restore(sess, ckpt.model_checkpoint_path)
 
-def upsample_and_concat(x1, x2, output_channels, in_channels):
-    pool_size = 2
-    deconv_filter = tf.Variable(tf.random.truncated_normal([pool_size, pool_size, output_channels, in_channels], stddev=0.02))
-    deconv = tf.nn.conv2d_transpose(x1, deconv_filter, tf.shape(input=x2), strides=[1, pool_size, pool_size, 1])
+class upsample_and_concat(tf.keras.layers.Layer):
+    def __init__(self, output_channels, in_channels):
+        super(upsample_and_concat, self).__init__()
+        pool_size = 2
+        # self.deconv_filter = tf.Variable(tf.random.truncated_normal([pool_size, pool_size, output_channels, in_channels], stddev=0.02))
+        self.deconv = tf.keras.layers.Conv2DTranspose(filters=output_channels, kernel_size=pool_size, padding='SAME', strides=pool_size, kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.02))
+        self.output_channels = output_channels
 
-    deconv_output = tf.concat([deconv, x2], 3)
-    deconv_output.set_shape([None, None, None, output_channels * 2])
-
-    return deconv_output
+    def call(self, x1, x2, training=True):
+        deconv = self.deconv(x1)
+        deconv_output = tf.concat([deconv, x2], 3)
+        deconv_output.set_shape([None, None, None, self.output_channels * 2])
+        return deconv_output
 
 class NetWork(tf.keras.Model):
     def __init__(self):
@@ -110,11 +114,16 @@ class NetWork(tf.keras.Model):
             tf.keras.layers.ReLU(negative_slope=0.2),
             tf.keras.layers.Conv2D(filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv16"),
             tf.keras.layers.ReLU(negative_slope=0.2),
+            tf.keras.layers.Conv2D(filters=12, kernel_size=1, strides=1, padding="SAME", name=self.name + "_conv17"),
         ])
 
-        self.conv10 = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(filters=12, kernel_size=1, strides=1, padding="SAME", name=self.name + "_conv16"),
-        ])
+        # self.conv10 = tf.keras.Sequential([
+        # ])
+
+        self.up6 = upsample_and_concat(256, 512)
+        self.up7 = upsample_and_concat(128, 256)
+        self.up8 = upsample_and_concat(64, 128)
+        self.up9 = upsample_and_concat(32, 64)
 
     def call(self, x):
         conv1 = self.conv1(x)
@@ -127,16 +136,20 @@ class NetWork(tf.keras.Model):
         pool4 = tf.nn.max_pool2d(conv4, ksize=2, strides=2, padding='SAME')
         conv5 = self.conv5(pool4)
         # pool5 = tf.nn.max_pool2d(conv5, ksize=2, strides=2, padding='SAME')
-        up6 = upsample_and_concat(conv5, conv4, 256, 512)
+        up6 = self.up6(conv5, conv4)
+        # up6 = upsample_and_concat(conv5, conv4, 256, 512)
         conv6 = self.conv6(up6)
-        up7 = upsample_and_concat(conv6, conv3, 128, 256)
+        up7 = self.up7(conv6, conv3)
+        # up7 = upsample_and_concat(conv6, conv3, 128, 256)
         conv7 = self.conv7(up7)
-        up8 = upsample_and_concat(conv7, conv2, 64, 128)
+        up8 = self.up8(conv7, conv2)
+        # up8 = upsample_and_concat(conv7, conv2, 64, 128)
         conv8 = self.conv8(up8)
-        up9 = upsample_and_concat(conv8, conv1, 32, 64)
+        up9 = self.up9(conv8, conv1)
+        # up9 = upsample_and_concat(conv8, conv1, 32, 64)
         conv9 = self.conv9(up9)
-        conv10 = self.conv10(conv9)
-        out = tf.nn.depth_to_space(input=conv10, block_size=2)
+        # conv10 = self.conv10(conv9)
+        out = tf.nn.depth_to_space(input=conv9, block_size=2)
         return out
 
 def pack_raw(raw):
