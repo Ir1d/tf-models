@@ -1,14 +1,11 @@
+from inpaint_model import InpaintGenerator
+from PIL import Image
+import yaml
 import argparse
 
 import cv2
 import numpy as np
 import tensorflow as tf
-tf.config.gpu.set_per_process_memory_growth(True)
-import yaml
-from PIL import Image
-import neuralgym as ng
-
-from inpaint_model import InpaintCAModel
 
 
 parser = argparse.ArgumentParser()
@@ -23,20 +20,15 @@ parser.add_argument('--checkpoint_dir', default='', type=str,
 
 
 if __name__ == "__main__":
-    # FLAGS = ng.Config('inpaint.yml')
     FLAGS = yaml.load(open('inpaint.yml', 'r'), Loader=yaml.FullLoader)
-    # ng.get_gpus(1)
     args, unknown = parser.parse_known_args()
 
-    model = InpaintCAModel()
-    # image = cv2.imread(args.image)
-    # mask = cv2.imread(args.mask)
-    # TODO: check whether rgb or bgr
     image = np.array(Image.open(args.image).convert('RGB'))
     mask = np.array(Image.open(args.mask).convert('L'))
-    # mask = cv2.resize(mask, (0,0), fx=0.5, fy=0.5)
+    mask = np.expand_dims(mask, 2)
+    print(mask.shape, image.shape)
 
-    assert image.shape == mask.shape
+    assert image.shape[:2] == mask.shape[:2]
 
     h, w, _ = image.shape
     grid = 8
@@ -44,27 +36,16 @@ if __name__ == "__main__":
     mask = mask[:h//grid*grid, :w//grid*grid, :]
     print('Shape of image: {}'.format(image.shape))
 
-    image = np.expand_dims(image, 0)
-    mask = np.expand_dims(mask, 0)
-    input_image = np.concatenate([image, mask], axis=2)
+    image = np.expand_dims(image, 0).astype(np.float32)
+    mask = np.expand_dims(mask, 0).astype(np.float32)
+    xin = image / 255.0
+    mask = mask / 255.0
 
-    sess_config = tf.compat.v1.ConfigProto()
-    # sess_config.gpu_options.allow_growth = True
-    with tf.compat.v1.Session(config=sess_config) as sess:
-        input_image = tf.constant(input_image, dtype=tf.float32)
-        output = model.build_server_graph(FLAGS, input_image)
-        output = (output + 1.) * 127.5
-        output = tf.reverse(output, [-1])
-        output = tf.saturate_cast(output, tf.uint8)
-        # load pretrained model
-        vars_list = tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.GLOBAL_VARIABLES)
-        assign_ops = []
-        for var in vars_list:
-            vname = var.name
-            from_name = vname
-            var_value = tf.train.load_variable(args.checkpoint_dir, from_name)
-            assign_ops.append(tf.compat.v1.assign(var, var_value))
-        sess.run(assign_ops)
-        print('Model loaded.')
-        result = sess.run(output)
-        cv2.imwrite(args.output, result[0][:, :, ::-1])
+    G = InpaintGenerator()
+    G.load_weights('logs/20200729-160205/models/G')
+
+    xin = xin*(1.-mask)
+    x1, x2, offset_flow = G(xin, mask, training=False)
+    batch_predicted = x2
+    result = batch_predicted * mask + xin * (1. - mask)
+    cv2.imwrite(args.output, np.array(result[0][:, :, ::-1] * 255))

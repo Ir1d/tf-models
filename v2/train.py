@@ -178,7 +178,7 @@ if __name__ == "__main__":
     def val_step(input_img, gt_img, mask_img):
         xin = (input_img)
         mask = (mask_img)
-        xin = xin*(1.-mask)
+        xin = xin * (1. - mask)
         # mask already 0-1
         x1, x2, offset_flow = G(xin, mask, training=False)
         batch_predicted = x2
