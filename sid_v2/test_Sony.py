@@ -18,6 +18,9 @@ result_dir = './result_Sony/'
 # get test IDs
 test_fns = glob.glob(gt_dir + '/1*.ARW')
 test_ids = [int(os.path.basename(test_fn)[0:5]) for test_fn in test_fns]
+# remove misalignment as specified in
+# https://github.com/cchen156/Learning-to-See-in-the-Dark#dataset
+test_ids = [x for x in test_ids if x != 10034 and x != 10045 and x != 10172]
 
 DEBUG = 0
 if DEBUG == 1:
