@@ -6,22 +6,17 @@ import numpy as np
 import tensorflow as tf
 from PIL import Image, ImageDraw
 
-# from neuralgym.ops.layers import *
-# from neuralgym.ops.loss_ops import *
-# from neuralgym.ops.gan_ops import *
-# from neuralgym.ops.summary_ops import *
-
-
 logger = logging.getLogger()
 np.random.seed(2018)
 
 class Flatten(tf.keras.layers.Layer):
     def __init__(self, name):
         super(Flatten, self).__init__()
-        # self.name = name
+
     def call(self, x, training=True):
         flattened = tf.reshape(x, [tf.shape(x)[0], -1])
         return flattened
+
 
 class GenConvLayer(tf.keras.layers.Layer):
     """Define conv for generator.
@@ -41,8 +36,9 @@ class GenConvLayer(tf.keras.layers.Layer):
         tf.Tensor: output
 
     """
+
     def __init__(self, cnum, ksize, stride=1, rate=1, name='conv',
-             padding='SAME', activation=tf.nn.elu, training=True):
+                 padding='SAME', activation=tf.nn.elu, training=True):
         super(GenConvLayer, self).__init__()
         self.cnum = cnum
         self.ksize = ksize
@@ -56,12 +52,15 @@ class GenConvLayer(tf.keras.layers.Layer):
             self.layer_pad_type = 'VALID'
         self.activation = activation
         self.training = training
-        self.conv = tf.keras.layers.Conv2D(filters=self.cnum, kernel_size=self.ksize, strides=self.stride, padding=self.layer_pad_type, name=name)
+        self.conv = tf.keras.layers.Conv2D(
+            filters=self.cnum, kernel_size=self.ksize, strides=self.stride, padding=self.layer_pad_type, name=name)
     # def build(self, input_shape):
+
     def call(self, inputs, training=True):
         if self.padding == 'SYMMETRIC' or self.padding == 'REFELECT':
             p = int(self.rate * (self.ksize - 1) / 2)
-            inputs = tf.pad(tensor=inputs, paddings=[[0,0], [p, p], [p, p], [0,0]], mode=self.padding)
+            inputs = tf.pad(tensor=inputs, paddings=[
+                            [0, 0], [p, p], [p, p], [0, 0]], mode=self.padding)
         x = self.conv(inputs)
         if (self.cnum == 3 or self.activation is None):
             # conv for output
@@ -72,13 +71,13 @@ class GenConvLayer(tf.keras.layers.Layer):
         x = x * y
         return x
 
+
 class resize(tf.keras.layers.Layer):
     def __init__(self, scale=2, to_shape=None, align_corners=True, dynamic=False, name='resize', func='bilinear'):
         """Resize a given image.
         Originated from https://github.com/JiahuiYu/neuralgym/blob/88292adb524186693a32404c0cfdc790426ea441/neuralgym/ops/layers.py#L141
         """
         super(resize, self).__init__()
-        # self.name = name
         self.scale = scale
         self.to_shape = to_shape
         self.align_corners = align_corners
@@ -93,32 +92,17 @@ class resize(tf.keras.layers.Layer):
             # NOTE: there seems no dynamic calls in deepfill
             xs = tf.cast(tf.shape(x), tf.float32)
             new_xs = [tf.cast(xs[1]*scale, tf.int32),
-                    tf.cast(xs[2]*scale, tf.int32)]
+                      tf.cast(xs[2]*scale, tf.int32)]
         else:
             xs = x.get_shape().as_list()
             new_xs = [int(xs[1]*scale), int(xs[2]*scale)]
         if self.to_shape is None:
-            x = tf.compat.v1.image.resize(images=inputs, size=new_xs, method=self.func, align_corners=self.align_corners)
+            x = tf.compat.v1.image.resize(
+                images=inputs, size=new_xs, method=self.func, align_corners=self.align_corners)
         else:
-            x = tf.compat.v1.image.resize(images=inputs, size=[to_shape[0], to_shape[1]], method=self.func, align_corners=self.align_corners)
+            x = tf.compat.v1.image.resize(images=inputs, size=[
+                                          to_shape[0], to_shape[1]], method=self.func, align_corners=self.align_corners)
         return flattened
-
-# def resize(x, scale=2, to_shape=None, align_corners=True, dynamic=False,
-#            func=tf.image.resize_bilinear, name='resize'):
-#     if dynamic:
-#         xs = tf.cast(tf.shape(x), tf.float32)
-#         new_xs = [tf.cast(xs[1]*scale, tf.int32),
-#                   tf.cast(xs[2]*scale, tf.int32)]
-#     else:
-#         xs = x.get_shape().as_list()
-#         new_xs = [int(xs[1]*scale), int(xs[2]*scale)]
-#     with tf.variable_scope(name):
-#         if to_shape is None:
-#             x = func(x, new_xs, align_corners=align_corners)
-#         else:
-#             x = func(x, [to_shape[0], to_shape[1]],
-#                      align_corners=align_corners)
-#     return x
 
 class GenDeconvLayer(tf.keras.layers.Layer):
     """Define deconv for generator.
@@ -135,43 +119,42 @@ class GenDeconvLayer(tf.keras.layers.Layer):
         tf.Tensor: output
 
     """
+
     def __init__(self, cnum, name='upsample', padding='SAME', training=True):
         super(GenDeconvLayer, self).__init__()
         self.cnum = cnum
         # self.name = name
         self.padding = padding
         self.training = training
-        self.conv = GenConvLayer(cnum=cnum, ksize=3, stride=1, name=name + '_conv', padding=self.padding, training=self.training)
+        self.conv = GenConvLayer(cnum=cnum, ksize=3, stride=1, name=name +
+                                 '_conv', padding=self.padding, training=self.training)
+
     def call(self, inputs, training=True):
         xs = inputs.get_shape().as_list()
-        new_xs = [int(xs[1] * 2), int(xs[2] *2)]
-        x = tf.compat.v1.image.resize(images=inputs, size=new_xs, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR, align_corners=True)
+        new_xs = [int(xs[1] * 2), int(xs[2] * 2)]
+        x = tf.compat.v1.image.resize(
+            images=inputs, size=new_xs, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR, align_corners=True)
         x = self.conv(x)
         return x
+
 
 def l2_norm(input_x, epsilon=1e-12):
     input_x_norm = input_x / (tf.reduce_sum(input_x**2)**0.5 + epsilon)
     return input_x_norm
-
-# def power_iteration(u, ite):
-#     v_ = tf.matmul(u, tf.transpose(w_mat))
-#     v_hat = l2_norm(v_)
-#     u_ = tf.matmul(v_hat, w_mat)
-#     u_hat = l2_norm(u_)
-#     return u_hat, v_hat, ite+1
 
 class kernel_spectral_norm(tf.keras.layers.Layer):
     def __init__(self, iteration=1, name='kernel_sn'):
         super(kernel_spectral_norm, self).__init__()
         self.iteration = iteration
         # self.name = name
+
     def call(self, inputs):
         # inputs is kernel
         w_shape = inputs.get_shape().as_list()
         w_mat = tf.reshape(inputs, [-1, w_shape[-1]])
-        u = tf.Variable(name='u', shape=[1, w_shape[-1]], initial_value=tf.random.truncated_normal(shape=[1, w_shape[-1]]), trainable=False)
+        u = tf.Variable(name='u', shape=[
+                        1, w_shape[-1]], initial_value=tf.random.truncated_normal(shape=[1, w_shape[-1]]), trainable=False)
 
-        # u_hat, v_hat,_ = power_iteration(u, self.iteration)
         v_ = tf.matmul(u, tf.transpose(w_mat))
         v_hat = l2_norm(v_)
         u_ = tf.matmul(v_hat, w_mat)
@@ -183,7 +166,7 @@ class kernel_spectral_norm(tf.keras.layers.Layer):
         # with tf.control_dependencies([u.assign(u_hat)]):
         #     w_norm = tf.reshape(w_mat, w_shape)
         return w_norm
-    
+
 
 class Conv2DSepctralNorm(tf.keras.layers.Conv2D):
     def build(self, input_shape):
@@ -191,28 +174,30 @@ class Conv2DSepctralNorm(tf.keras.layers.Conv2D):
         self.sn = kernel_spectral_norm()
         self.kernel = self.sn(self.kernel)
 
+
 class conv2d_spectral_norm(tf.keras.layers.Layer):
     """
     https://github.com/JiahuiYu/neuralgym/blob/88292adb524186693a32404c0cfdc790426ea441/neuralgym/ops/gan_ops.py#L144
     """
+
     def __init__(self, filters,
-        kernel_size,
-        strides=(1, 1),
-        padding='valid',
-        data_format='channels_last',
-        dilation_rate=(1, 1),
-        activation=None,
-        use_bias=True,
-        kernel_initializer=None,
-        bias_initializer=tf.zeros_initializer(),
-        kernel_regularizer=None,
-        bias_regularizer=None,
-        activity_regularizer=None,
-        kernel_constraint=None,
-        bias_constraint=None,
-        trainable=True,
-        name=None,
-        reuse=None):
+                 kernel_size,
+                 strides=(1, 1),
+                 padding='valid',
+                 data_format='channels_last',
+                 dilation_rate=(1, 1),
+                 activation=None,
+                 use_bias=True,
+                 kernel_initializer=None,
+                 bias_initializer=tf.zeros_initializer(),
+                 kernel_regularizer=None,
+                 bias_regularizer=None,
+                 activity_regularizer=None,
+                 kernel_constraint=None,
+                 bias_constraint=None,
+                 trainable=True,
+                 name=None,
+                 reuse=None):
         super(conv2d_spectral_norm, self).__init__()
         self.filters = filters
         self.kernel_size = kernel_size
@@ -233,28 +218,26 @@ class conv2d_spectral_norm(tf.keras.layers.Layer):
         # self.name = name
 
         self.layer = Conv2DSepctralNorm(
-        filters=filters,
-        kernel_size=kernel_size,
-        strides=strides,
-        padding=padding,
-        data_format=data_format,
-        dilation_rate=dilation_rate,
-        activation=activation,
-        use_bias=use_bias,
-        kernel_initializer=kernel_initializer,
-        bias_initializer=bias_initializer,
-        kernel_regularizer=kernel_regularizer,
-        bias_regularizer=bias_regularizer,
-        activity_regularizer=activity_regularizer,
-        kernel_constraint=kernel_constraint,
-        bias_constraint=bias_constraint,
-        trainable=trainable,
-        name=name)
+            filters=filters,
+            kernel_size=kernel_size,
+            strides=strides,
+            padding=padding,
+            data_format=data_format,
+            dilation_rate=dilation_rate,
+            activation=activation,
+            use_bias=use_bias,
+            kernel_initializer=kernel_initializer,
+            bias_initializer=bias_initializer,
+            kernel_regularizer=kernel_regularizer,
+            bias_regularizer=bias_regularizer,
+            activity_regularizer=activity_regularizer,
+            kernel_constraint=kernel_constraint,
+            bias_constraint=bias_constraint,
+            trainable=trainable,
+            name=name)
 
-    # def build()
     def call(self, inputs, training=True):
         return self.layer(inputs)
-        # return self.layer.apply(inputs)
 
 
 class DisConvLayer(tf.keras.layers.Layer):
@@ -273,14 +256,16 @@ class DisConvLayer(tf.keras.layers.Layer):
         tf.Tensor: output
 
     """
+
     def __init__(self, cnum, ksize=5, stride=2, name='conv', training=True):
         super(DisConvLayer, self).__init__()
         self.cnum = cnum
         self.ksize = ksize
         self.stride = stride
-        # self.name = name
         self.training = training
-        self.conv = conv2d_spectral_norm(self.cnum, self.ksize, self.stride, 'SAME', name=name)
+        self.conv = conv2d_spectral_norm(
+            self.cnum, self.ksize, self.stride, 'SAME', name=name)
+
     def call(self, inputs, training=True):
         x = self.conv(inputs)
         x = tf.nn.leaky_relu(x)
@@ -351,6 +336,7 @@ def brush_stroke_mask(FLAGS, name='mask'):
     angle_range = 2*math.pi / 15
     min_width = 12
     max_width = 40
+
     def generate_mask(H, W):
         average_radius = math.sqrt(H*H+W*W) / 8
         mask = Image.new('L', (W, H), 0)
@@ -363,15 +349,18 @@ def brush_stroke_mask(FLAGS, name='mask'):
             vertex = []
             for i in range(num_vertex):
                 if i % 2 == 0:
-                    angles.append(2*math.pi - np.random.uniform(angle_min, angle_max))
+                    angles.append(
+                        2*math.pi - np.random.uniform(angle_min, angle_max))
                 else:
                     angles.append(np.random.uniform(angle_min, angle_max))
 
             h, w = mask.size
-            vertex.append((int(np.random.randint(0, w)), int(np.random.randint(0, h))))
+            vertex.append((int(np.random.randint(0, w)),
+                           int(np.random.randint(0, h))))
             for i in range(num_vertex):
                 r = np.clip(
-                    np.random.normal(loc=average_radius, scale=average_radius//2),
+                    np.random.normal(loc=average_radius,
+                                     scale=average_radius//2),
                     0, 2*average_radius)
                 new_x = np.clip(vertex[-1][0] + r * math.cos(angles[i]), 0, w)
                 new_y = np.clip(vertex[-1][1] + r * math.sin(angles[i]), 0, h)
@@ -420,6 +409,7 @@ def local_patch(x, bbox):
     x = tf.image.crop_to_bounding_box(x, bbox[0], bbox[1], bbox[2], bbox[3])
     return x
 
+
 def resize_mask_like(mask, x):
     """Resize mask like shape of x.
 
@@ -432,12 +422,10 @@ def resize_mask_like(mask, x):
 
     """
     shape = x.get_shape().as_list()[1:3]
-    # print(shape)
-    mask_resize = tf.compat.v1.image.resize(images=mask, size=[shape[0], shape[1]], method=tf.image.ResizeMethod.NEAREST_NEIGHBOR, align_corners=True)
-    # mask_resize = resize(
-    #     mask, to_shape=,
-    #     func=tf.compat.v1.image.resize_nearest_neighbor)
+    mask_resize = tf.compat.v1.image.resize(images=mask, size=[
+                                            shape[0], shape[1]], method=tf.image.ResizeMethod.NEAREST_NEIGHBOR, align_corners=True)
     return mask_resize
+
 
 def contextual_attention(f, b, mask=None, ksize=3, stride=1, rate=1,
                          fuse_k=3, softmax_scale=10., training=True, fuse=True):
@@ -464,14 +452,14 @@ def contextual_attention(f, b, mask=None, ksize=3, stride=1, rate=1,
     raw_fs = tf.shape(input=f)
     raw_int_fs = f.get_shape().as_list()
     raw_int_bs = b.get_shape().as_list()
-    # print('>> fs', raw_int_fs)
-    # print('>> bs', raw_int_bs)
     # extract patches from background with stride and rate
     kernel = 2*rate
     raw_w = tf.image.extract_patches(
-        b, [1,kernel,kernel,1], [1,rate*stride,rate*stride,1], [1,1,1,1], padding='SAME')
-    raw_w = tf.reshape(raw_w, [raw_int_bs[0], -1, kernel, kernel, raw_int_bs[3]])
-    raw_w = tf.transpose(a=raw_w, perm=[0, 2, 3, 4, 1])  # transpose to b*k*k*c*hw
+        b, [1, kernel, kernel, 1], [1, rate*stride, rate*stride, 1], [1, 1, 1, 1], padding='SAME')
+    raw_w = tf.reshape(
+        raw_w, [raw_int_bs[0], -1, kernel, kernel, raw_int_bs[3]])
+    # transpose to b*k*k*c*hw
+    raw_w = tf.transpose(a=raw_w, perm=[0, 2, 3, 4, 1])
     # downscaling foreground option: downscaling both foreground and
     # background for matching and use original background for reconstruction.
 
@@ -479,20 +467,15 @@ def contextual_attention(f, b, mask=None, ksize=3, stride=1, rate=1,
     scale_rate = 1./rate
     xs = f.get_shape().as_list()
     new_xs = [int(xs[1] * scale_rate), int(xs[2] * scale_rate)]
-    # print(new_xs, rate)
-    # print([int(raw_int_bs[1]/rate), int(raw_int_bs[2]/rate)])
-    # print(tf.shape(f), tf.shape(b), tf.shape(mask))
-    f = tf.compat.v1.image.resize(images=f, size=new_xs, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR, align_corners=True)
-    # f = resize(f, scale=1./rate, func=tf.compat.v1.image.resize_nearest_neighbor)
+    f = tf.compat.v1.image.resize(
+        images=f, size=new_xs, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR, align_corners=True)
     # resize b
-    b = tf.compat.v1.image.resize(images=b, size=[int(raw_int_bs[1]/rate), int(raw_int_bs[2]/rate)], method=tf.image.ResizeMethod.NEAREST_NEIGHBOR, align_corners=True)
-    # b = resize(b, to_shape=[int(raw_int_bs[1]/rate), int(raw_int_bs[2]/rate)], func=tf.compat.v1.image.resize_nearest_neighbor)  # https://github.com/tensorflow/tensorflow/issues/11651
+    b = tf.compat.v1.image.resize(images=b, size=[int(raw_int_bs[1]/rate), int(
+        raw_int_bs[2]/rate)], method=tf.image.ResizeMethod.NEAREST_NEIGHBOR, align_corners=True)
     if mask is not None:
         # resize mask
-        mask = tf.compat.v1.image.resize(images=mask, size=new_xs, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR, align_corners=True)
-        # mask = resize(mask, scale=1./rate, func=tf.compat.v1.image.resize_nearest_neighbor)
-    # print(tf.shape(f), tf.shape(b), tf.shape(mask))
-    # print(f.shape, b.shape, mask.shape)
+        mask = tf.compat.v1.image.resize(
+            images=mask, size=new_xs, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR, align_corners=True)
     fs = tf.shape(input=f)
     int_fs = f.get_shape().as_list()
     f_groups = tf.split(f, int_fs[0], axis=0)
@@ -500,18 +483,19 @@ def contextual_attention(f, b, mask=None, ksize=3, stride=1, rate=1,
     bs = tf.shape(input=b)
     int_bs = b.get_shape().as_list()
     w = tf.image.extract_patches(
-        b, [1,ksize,ksize,1], [1,stride,stride,1], [1,1,1,1], padding='SAME')
+        b, [1, ksize, ksize, 1], [1, stride, stride, 1], [1, 1, 1, 1], padding='SAME')
     w = tf.reshape(w, [int_fs[0], -1, ksize, ksize, int_fs[3]])
     w = tf.transpose(a=w, perm=[0, 2, 3, 4, 1])  # transpose to b*k*k*c*hw
     # process mask
     if mask is None:
         mask = tf.zeros([1, bs[1], bs[2], 1])
     m = tf.image.extract_patches(
-        mask, [1,ksize,ksize,1], [1,stride,stride,1], [1,1,1,1], padding='SAME')
+        mask, [1, ksize, ksize, 1], [1, stride, stride, 1], [1, 1, 1, 1], padding='SAME')
     m = tf.reshape(m, [1, -1, ksize, ksize, 1])
     m = tf.transpose(a=m, perm=[0, 2, 3, 4, 1])  # transpose to b*k*k*c*hw
     m = m[0]
-    mm = tf.cast(tf.equal(tf.reduce_mean(input_tensor=m, axis=[0,1,2], keepdims=True), 0.), tf.float32)
+    mm = tf.cast(tf.equal(tf.reduce_mean(input_tensor=m, axis=[
+                 0, 1, 2], keepdims=True), 0.), tf.float32)
     w_groups = tf.split(w, int_bs[0], axis=0)
     raw_w_groups = tf.split(raw_w, int_bs[0], axis=0)
     y = []
@@ -522,32 +506,38 @@ def contextual_attention(f, b, mask=None, ksize=3, stride=1, rate=1,
     for xi, wi, raw_wi in zip(f_groups, w_groups, raw_w_groups):
         # conv for compare
         wi = wi[0]
-        wi_normed = wi / tf.maximum(tf.sqrt(tf.reduce_sum(input_tensor=tf.square(wi), axis=[0,1,2])), 1e-4)
-        yi = tf.nn.conv2d(input=xi, filters=wi_normed, strides=[1,1,1,1], padding="SAME")
+        wi_normed = wi / \
+            tf.maximum(tf.sqrt(tf.reduce_sum(
+                input_tensor=tf.square(wi), axis=[0, 1, 2])), 1e-4)
+        yi = tf.nn.conv2d(input=xi, filters=wi_normed,
+                          strides=[1, 1, 1, 1], padding="SAME")
 
         # conv implementation for fuse scores to encourage large patches
         if fuse:
             yi = tf.reshape(yi, [1, fs[1]*fs[2], bs[1]*bs[2], 1])
-            yi = tf.nn.conv2d(input=yi, filters=fuse_weight, strides=[1,1,1,1], padding='SAME')
+            yi = tf.nn.conv2d(input=yi, filters=fuse_weight,
+                              strides=[1, 1, 1, 1], padding='SAME')
             yi = tf.reshape(yi, [1, fs[1], fs[2], bs[1], bs[2]])
             yi = tf.transpose(a=yi, perm=[0, 2, 1, 4, 3])
             yi = tf.reshape(yi, [1, fs[1]*fs[2], bs[1]*bs[2], 1])
-            yi = tf.nn.conv2d(input=yi, filters=fuse_weight, strides=[1,1,1,1], padding='SAME')
+            yi = tf.nn.conv2d(input=yi, filters=fuse_weight,
+                              strides=[1, 1, 1, 1], padding='SAME')
             yi = tf.reshape(yi, [1, fs[2], fs[1], bs[2], bs[1]])
             yi = tf.transpose(a=yi, perm=[0, 2, 1, 4, 3])
         yi = tf.reshape(yi, [1, fs[1], fs[2], bs[1]*bs[2]])
 
         # softmax to match
-        yi *=  mm  # mask
+        yi *= mm  # mask
         yi = tf.nn.softmax(yi*scale, 3)
-        yi *=  mm  # mask
+        yi *= mm  # mask
 
         offset = tf.argmax(input=yi, axis=3, output_type=tf.int32)
         offset = tf.stack([offset // fs[2], offset % fs[2]], axis=-1)
         # deconv for patch pasting
         # 3.1 paste center
         wi_center = raw_wi[0]
-        yi = tf.nn.conv2d_transpose(yi, wi_center, tf.concat([[1], raw_fs[1:]], axis=0), strides=[1,rate,rate,1]) / 4.
+        yi = tf.nn.conv2d_transpose(yi, wi_center, tf.concat(
+            [[1], raw_fs[1:]], axis=0), strides=[1, rate, rate, 1]) / 4.
         y.append(yi)
         offsets.append(offset)
     y = tf.concat(y, axis=0)
@@ -555,8 +545,10 @@ def contextual_attention(f, b, mask=None, ksize=3, stride=1, rate=1,
     offsets = tf.concat(offsets, axis=0)
     offsets.set_shape(int_bs[:3] + [2])
     # case1: visualize optical flow: minus current position
-    h_add = tf.tile(tf.reshape(tf.range(bs[1]), [1, bs[1], 1, 1]), [bs[0], 1, bs[2], 1])
-    w_add = tf.tile(tf.reshape(tf.range(bs[2]), [1, 1, bs[2], 1]), [bs[0], bs[1], 1, 1])
+    h_add = tf.tile(tf.reshape(tf.range(bs[1]), [1, bs[1], 1, 1]), [
+                    bs[0], 1, bs[2], 1])
+    w_add = tf.tile(tf.reshape(tf.range(bs[2]), [1, 1, bs[2], 1]), [
+                    bs[0], bs[1], 1, 1])
     offsets = offsets - tf.concat([h_add, w_add], axis=3)
     # to flow image
     flow = flow_to_image_tf(offsets)
@@ -567,7 +559,8 @@ def contextual_attention(f, b, mask=None, ksize=3, stride=1, rate=1,
         # flow = resize(flow, scale=rate, func=tf.compat.v1.image.resize_bilinear)
         xs = flow.get_shape().as_list()
         new_xs = [int(xs[1] * scale_rate), int(xs[2] * scale_rate)]
-        flow = tf.compat.v1.image.resize(images=flow, size=new_xs, method=tf.image.ResizeMethod.BILINEAR, align_corners=True)
+        flow = tf.compat.v1.image.resize(
+            images=flow, size=new_xs, method=tf.image.ResizeMethod.BILINEAR, align_corners=True)
     return y, flow
 
 
@@ -590,7 +583,6 @@ def test_contextual_attention(args):
     h, w, _ = b.shape
     b = b[:h//grid*grid, :w//grid*grid, :]
     b = np.expand_dims(b, 0)
-    # print(b.shape)
     logger.info('Size of imageA: {}'.format(b.shape))
 
     f = cv2.imread(args.imageB)
@@ -598,7 +590,6 @@ def test_contextual_attention(args):
     h, w, _ = f.shape
     f = f[:h//grid*grid, :w//grid*grid, :]
     f = np.expand_dims(f, 0)
-    # print(f.shape)
     logger.info('Size of imageB: {}'.format(f.shape))
 
     with tf.compat.v1.Session() as sess:
@@ -611,6 +602,7 @@ def test_contextual_attention(args):
         y = sess.run(yt)
         cv2.imwrite(args.imageOut, y[0])
 
+
 def make_color_wheel():
     RY, YG, GC, CB, BM, MR = (15, 6, 4, 11, 13, 6)
     ncols = RY + YG + GC + CB + BM + MR
@@ -621,23 +613,28 @@ def make_color_wheel():
     colorwheel[0:RY, 1] = np.transpose(np.floor(255*np.arange(0, RY) / RY))
     col += RY
     # YG
-    colorwheel[col:col+YG, 0] = 255 - np.transpose(np.floor(255*np.arange(0, YG) / YG))
+    colorwheel[col:col+YG, 0] = 255 - \
+        np.transpose(np.floor(255*np.arange(0, YG) / YG))
     colorwheel[col:col+YG, 1] = 255
     col += YG
     # GC
     colorwheel[col:col+GC, 1] = 255
-    colorwheel[col:col+GC, 2] = np.transpose(np.floor(255*np.arange(0, GC) / GC))
+    colorwheel[col:col+GC,
+               2] = np.transpose(np.floor(255*np.arange(0, GC) / GC))
     col += GC
     # CB
-    colorwheel[col:col+CB, 1] = 255 - np.transpose(np.floor(255*np.arange(0, CB) / CB))
+    colorwheel[col:col+CB, 1] = 255 - \
+        np.transpose(np.floor(255*np.arange(0, CB) / CB))
     colorwheel[col:col+CB, 2] = 255
     col += CB
     # BM
     colorwheel[col:col+BM, 2] = 255
-    colorwheel[col:col+BM, 0] = np.transpose(np.floor(255*np.arange(0, BM) / BM))
+    colorwheel[col:col+BM,
+               0] = np.transpose(np.floor(255*np.arange(0, BM) / BM))
     col += + BM
     # MR
-    colorwheel[col:col+MR, 2] = 255 - np.transpose(np.floor(255 * np.arange(0, MR) / MR))
+    colorwheel[col:col+MR, 2] = 255 - \
+        np.transpose(np.floor(255 * np.arange(0, MR) / MR))
     colorwheel[col:col+MR, 0] = 255
     return colorwheel
 
@@ -645,7 +642,7 @@ def make_color_wheel():
 COLORWHEEL = make_color_wheel()
 
 
-def compute_color(u,v):
+def compute_color(u, v):
     h, w = u.shape
     img = np.zeros([h, w, 3])
     nanIdx = np.isnan(u) | np.isnan(v)
@@ -661,7 +658,7 @@ def compute_color(u,v):
     k1 = k0 + 1
     k1[k1 == ncols+1] = 1
     f = fk - k0
-    for i in range(np.size(colorwheel,1)):
+    for i in range(np.size(colorwheel, 1)):
         tmp = colorwheel[:, i]
         col0 = tmp[k0-1] / 255
         col1 = tmp[k1-1] / 255
@@ -672,7 +669,6 @@ def compute_color(u,v):
         col[notidx] *= 0.75
         img[:, :, i] = np.uint8(np.floor(255 * col*(1-nanIdx)))
     return img
-
 
 
 def flow_to_image(flow):
@@ -708,7 +704,8 @@ def flow_to_image_tf(flow, name='flow_to_image'):
     """Tensorflow ops for computing flow to image.
     """
     with tf.compat.v1.variable_scope(name), tf.device('/cpu:0'):
-        img = tf.compat.v1.py_func(flow_to_image, [flow], tf.float32, stateful=False)
+        img = tf.compat.v1.py_func(
+            flow_to_image, [flow], tf.float32, stateful=False)
         img.set_shape(flow.get_shape().as_list()[0:-1]+[3])
         img = img / 127.5 - 1.
         return img
@@ -725,8 +722,8 @@ def highlight_flow(flow):
         v = flow[i, :, :, 1]
         for h in range(s[1]):
             for w in range(s[1]):
-                ui = u[h,w]
-                vi = v[h,w]
+                ui = u[h, w]
+                vi = v[h, w]
                 img[ui, vi, :] = 255.
         out.append(img)
     return np.float32(np.uint8(out))
@@ -736,7 +733,8 @@ def highlight_flow_tf(flow, name='flow_to_image'):
     """Tensorflow ops for highlight flow.
     """
     with tf.compat.v1.variable_scope(name), tf.device('/cpu:0'):
-        img = tf.compat.v1.py_func(highlight_flow, [flow], tf.float32, stateful=False)
+        img = tf.compat.v1.py_func(
+            highlight_flow, [flow], tf.float32, stateful=False)
         img.set_shape(flow.get_shape().as_list()[0:-1]+[3])
         img = img / 127.5 - 1.
         return img
@@ -755,9 +753,12 @@ def image2edge(image):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--imageA', default='', type=str, help='Image A as background patches to reconstruct image B.')
-    parser.add_argument('--imageB', default='', type=str, help='Image B is reconstructed with image A.')
-    parser.add_argument('--imageOut', default='result.png', type=str, help='Image B is reconstructed with image A.')
+    parser.add_argument('--imageA', default='', type=str,
+                        help='Image A as background patches to reconstruct image B.')
+    parser.add_argument('--imageB', default='', type=str,
+                        help='Image B is reconstructed with image A.')
+    parser.add_argument('--imageOut', default='result.png',
+                        type=str, help='Image B is reconstructed with image A.')
     args = parser.parse_args()
     test_contextual_attention(args)
 
