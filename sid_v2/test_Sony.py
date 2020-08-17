@@ -1,14 +1,14 @@
 # uniform content loss + adaptive threshold + per_class_input + recursive G
 # improvement upon cqf37
 from __future__ import division
-import os, scipy.io
+import os
+import scipy.io
 import tensorflow as tf
 import numpy as np
 import rawpy
 import glob
 import tqdm
 from PIL import Image
-# from train_Sony import pack_raw, upsample_and_concat, NetWork
 
 input_dir = './dataset/Sony/short/'
 gt_dir = './dataset/Sony/long/'
@@ -25,24 +25,12 @@ if DEBUG == 1:
     test_ids = test_ids[0:5]
 
 
-# sess = tf.compat.v1.Session()
-# in_image = tf.compat.v1.placeholder(tf.float32, [None, None, None, 4])
-# gt_image = tf.compat.v1.placeholder(tf.float32, [None, None, None, 3])
-# out_image = network(in_image)
-
-# saver = tf.compat.v1.train.Saver()
-# sess.run(tf.compat.v1.global_variables_initializer())
-# ckpt = tf.train.get_checkpoint_state(checkpoint_dir)
-# if ckpt:
-#     print('loaded ' + ckpt.model_checkpoint_path)
-#     saver.restore(sess, ckpt.model_checkpoint_path)
-
 class upsample_and_concat(tf.keras.layers.Layer):
     def __init__(self, output_channels, in_channels):
         super(upsample_and_concat, self).__init__()
         pool_size = 2
-        # self.deconv_filter = tf.Variable(tf.random.truncated_normal([pool_size, pool_size, output_channels, in_channels], stddev=0.02))
-        self.deconv = tf.keras.layers.Conv2DTranspose(filters=output_channels, kernel_size=pool_size, padding='SAME', strides=pool_size, kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.02))
+        self.deconv = tf.keras.layers.Conv2DTranspose(filters=output_channels, kernel_size=pool_size, padding='SAME',
+                                                      strides=pool_size, kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.02))
         self.output_channels = output_channels
 
     def call(self, x1, x2, training=True):
@@ -51,74 +39,91 @@ class upsample_and_concat(tf.keras.layers.Layer):
         deconv_output.set_shape([None, None, None, self.output_channels * 2])
         return deconv_output
 
+
 class NetWork(tf.keras.Model):
     def __init__(self):
         super(NetWork, self).__init__()
         self.conv1 = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv1"),
+            tf.keras.layers.Conv2D(
+                filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv1"),
             tf.keras.layers.ReLU(negative_slope=0.2),
-            tf.keras.layers.Conv2D(filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv2"),
+            tf.keras.layers.Conv2D(
+                filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv2"),
             tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv2 = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(filters=64, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv3"),
+            tf.keras.layers.Conv2D(
+                filters=64, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv3"),
             tf.keras.layers.ReLU(negative_slope=0.2),
-            tf.keras.layers.Conv2D(filters=64, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv4"),
+            tf.keras.layers.Conv2D(
+                filters=64, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv4"),
             tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv3 = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(filters=128, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv5"),
+            tf.keras.layers.Conv2D(
+                filters=128, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv5"),
             tf.keras.layers.ReLU(negative_slope=0.2),
-            tf.keras.layers.Conv2D(filters=128, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv6"),
+            tf.keras.layers.Conv2D(
+                filters=128, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv6"),
             tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv4 = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(filters=256, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv7"),
+            tf.keras.layers.Conv2D(
+                filters=256, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv7"),
             tf.keras.layers.ReLU(negative_slope=0.2),
-            tf.keras.layers.Conv2D(filters=256, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv8"),
+            tf.keras.layers.Conv2D(
+                filters=256, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv8"),
             tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv5 = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(filters=512, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv9"),
+            tf.keras.layers.Conv2D(
+                filters=512, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv9"),
             tf.keras.layers.ReLU(negative_slope=0.2),
-            tf.keras.layers.Conv2D(filters=512, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv10"),
+            tf.keras.layers.Conv2D(
+                filters=512, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv10"),
             tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv6 = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(filters=256, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv11"),
+            tf.keras.layers.Conv2D(
+                filters=256, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv11"),
             tf.keras.layers.ReLU(negative_slope=0.2),
-            tf.keras.layers.Conv2D(filters=256, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv12"),
+            tf.keras.layers.Conv2D(
+                filters=256, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv12"),
             tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv7 = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(filters=128, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv11"),
+            tf.keras.layers.Conv2D(
+                filters=128, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv11"),
             tf.keras.layers.ReLU(negative_slope=0.2),
-            tf.keras.layers.Conv2D(filters=128, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv12"),
+            tf.keras.layers.Conv2D(
+                filters=128, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv12"),
             tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv8 = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(filters=64, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv13"),
-            tf.keras.layers.Conv2D(filters=64, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv14"),
+            tf.keras.layers.Conv2D(
+                filters=64, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv13"),
+            tf.keras.layers.Conv2D(
+                filters=64, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv14"),
             tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv9 = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv15"),
+            tf.keras.layers.Conv2D(
+                filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv15"),
             tf.keras.layers.ReLU(negative_slope=0.2),
-            tf.keras.layers.Conv2D(filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv16"),
+            tf.keras.layers.Conv2D(
+                filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv16"),
             tf.keras.layers.ReLU(negative_slope=0.2),
-            tf.keras.layers.Conv2D(filters=12, kernel_size=1, strides=1, padding="SAME", name=self.name + "_conv17"),
+            tf.keras.layers.Conv2D(
+                filters=12, kernel_size=1, strides=1, padding="SAME", name=self.name + "_conv17"),
         ])
-
-        # self.conv10 = tf.keras.Sequential([
-        # ])
 
         self.up6 = upsample_and_concat(256, 512)
         self.up7 = upsample_and_concat(128, 256)
@@ -135,20 +140,14 @@ class NetWork(tf.keras.Model):
         conv4 = self.conv4(pool3)
         pool4 = tf.nn.max_pool2d(conv4, ksize=2, strides=2, padding='SAME')
         conv5 = self.conv5(pool4)
-        # pool5 = tf.nn.max_pool2d(conv5, ksize=2, strides=2, padding='SAME')
         up6 = self.up6(conv5, conv4)
-        # up6 = upsample_and_concat(conv5, conv4, 256, 512)
         conv6 = self.conv6(up6)
         up7 = self.up7(conv6, conv3)
-        # up7 = upsample_and_concat(conv6, conv3, 128, 256)
         conv7 = self.conv7(up7)
         up8 = self.up8(conv7, conv2)
-        # up8 = upsample_and_concat(conv7, conv2, 64, 128)
         conv8 = self.conv8(up8)
         up9 = self.up9(conv8, conv1)
-        # up9 = upsample_and_concat(conv8, conv1, 32, 64)
         conv9 = self.conv9(up9)
-        # conv10 = self.conv10(conv9)
         out = tf.nn.depth_to_space(input=conv9, block_size=2)
         return out
 
@@ -168,11 +167,11 @@ def pack_raw(raw):
                           im[1:H:2, 0:W:2, :]), axis=2)
     return out
 
+
 net = NetWork()
 
 net.load_weights(checkpoint_dir)
 
-# if not os.path.isdir(result_dir + 'final/'):
 os.makedirs(result_dir + 'final/', exist_ok=True)
 psnr = 0
 cnt = 0
@@ -193,18 +192,18 @@ for test_id in tqdm.tqdm(test_ids):
         raw = rawpy.imread(in_path)
         input_full = np.expand_dims(pack_raw(raw), axis=0) * ratio
 
-        im = raw.postprocess(use_camera_wb=True, half_size=False, no_auto_bright=True, output_bps=16)
-        # scale_full = np.expand_dims(np.float32(im/65535.0),axis = 0)*ratio
+        im = raw.postprocess(use_camera_wb=True, half_size=False,
+                             no_auto_bright=True, output_bps=16)
         scale_full = np.expand_dims(np.float32(im / 65535.0), axis=0)
 
         gt_raw = rawpy.imread(gt_path)
-        im = gt_raw.postprocess(use_camera_wb=True, half_size=False, no_auto_bright=True, output_bps=16)
+        im = gt_raw.postprocess(
+            use_camera_wb=True, half_size=False, no_auto_bright=True, output_bps=16)
         gt_full = np.expand_dims(np.float32(im / 65535.0), axis=0)
 
         input_full = np.minimum(input_full, 1.0)
 
         output = net(input_full)
-        # output = sess.run(out_image, feed_dict={in_image: input_full})
         output = np.minimum(np.maximum(output, 0), 1)
 
         cur_psnr = tf.image.psnr(gt_full, output, max_val=1)
@@ -219,13 +218,10 @@ for test_id in tqdm.tqdm(test_ids):
             scale_full)  # scale the low-light image to the same mean of the groundtruth
 
         Image.fromarray((output * 255).astype('uint8').clip(min=0, max=255)).save(
-        # scipy.misc.toimage(output * 255, high=255, low=0, cmin=0, cmax=255).save(
             result_dir + 'final/%5d_00_%d_out.png' % (test_id, ratio))
         Image.fromarray((scale_full * 255).astype('uint8').clip(min=0, max=255)).save(
-        # scipy.misc.toimage(scale_full * 255, high=255, low=0, cmin=0, cmax=255).save(
             result_dir + 'final/%5d_00_%d_scale.png' % (test_id, ratio))
         Image.fromarray((gt_full * 255).astype('uint8').clip(min=0, max=255)).save(
-        # scipy.misc.toimage(gt_full * 255, high=255, low=0, cmin=0, cmax=255).save(
             result_dir + 'final/%5d_00_%d_gt.png' % (test_id, ratio))
 
 print(psnr * 1.0 / cnt)

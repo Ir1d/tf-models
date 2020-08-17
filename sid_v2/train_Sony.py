@@ -1,7 +1,9 @@
 # uniform content loss + adaptive threshold + per_class_input + recursive G
 # improvement upon cqf37
 from __future__ import division
-import os, time, scipy.io
+import os
+import time
+import scipy.io
 import tensorflow as tf
 import numpy as np
 import rawpy
@@ -36,16 +38,13 @@ if DEBUG == 1:
     save_freq = 2
     train_ids = train_ids[0:5]
 
-# @tf.function
-# def lrelu(x):
-#     return tf.maximum(x * 0.2, x)
 
 class upsample_and_concat(tf.keras.layers.Layer):
     def __init__(self, output_channels, in_channels):
         super(upsample_and_concat, self).__init__()
         pool_size = 2
-        # self.deconv_filter = tf.Variable(tf.random.truncated_normal([pool_size, pool_size, output_channels, in_channels], stddev=0.02))
-        self.deconv = tf.keras.layers.Conv2DTranspose(filters=output_channels, kernel_size=pool_size, padding='SAME', strides=pool_size, kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.02))
+        self.deconv = tf.keras.layers.Conv2DTranspose(filters=output_channels, kernel_size=pool_size, padding='SAME',
+                                                      strides=pool_size, kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.02))
         self.output_channels = output_channels
 
     def call(self, x1, x2, training=True):
@@ -54,74 +53,91 @@ class upsample_and_concat(tf.keras.layers.Layer):
         deconv_output.set_shape([None, None, None, self.output_channels * 2])
         return deconv_output
 
+
 class NetWork(tf.keras.Model):
     def __init__(self):
         super(NetWork, self).__init__()
         self.conv1 = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv1"),
+            tf.keras.layers.Conv2D(
+                filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv1"),
             tf.keras.layers.ReLU(negative_slope=0.2),
-            tf.keras.layers.Conv2D(filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv2"),
+            tf.keras.layers.Conv2D(
+                filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv2"),
             tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv2 = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(filters=64, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv3"),
+            tf.keras.layers.Conv2D(
+                filters=64, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv3"),
             tf.keras.layers.ReLU(negative_slope=0.2),
-            tf.keras.layers.Conv2D(filters=64, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv4"),
+            tf.keras.layers.Conv2D(
+                filters=64, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv4"),
             tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv3 = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(filters=128, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv5"),
+            tf.keras.layers.Conv2D(
+                filters=128, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv5"),
             tf.keras.layers.ReLU(negative_slope=0.2),
-            tf.keras.layers.Conv2D(filters=128, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv6"),
+            tf.keras.layers.Conv2D(
+                filters=128, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv6"),
             tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv4 = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(filters=256, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv7"),
+            tf.keras.layers.Conv2D(
+                filters=256, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv7"),
             tf.keras.layers.ReLU(negative_slope=0.2),
-            tf.keras.layers.Conv2D(filters=256, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv8"),
+            tf.keras.layers.Conv2D(
+                filters=256, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv8"),
             tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv5 = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(filters=512, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv9"),
+            tf.keras.layers.Conv2D(
+                filters=512, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv9"),
             tf.keras.layers.ReLU(negative_slope=0.2),
-            tf.keras.layers.Conv2D(filters=512, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv10"),
+            tf.keras.layers.Conv2D(
+                filters=512, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv10"),
             tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv6 = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(filters=256, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv11"),
+            tf.keras.layers.Conv2D(
+                filters=256, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv11"),
             tf.keras.layers.ReLU(negative_slope=0.2),
-            tf.keras.layers.Conv2D(filters=256, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv12"),
+            tf.keras.layers.Conv2D(
+                filters=256, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv12"),
             tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv7 = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(filters=128, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv11"),
+            tf.keras.layers.Conv2D(
+                filters=128, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv11"),
             tf.keras.layers.ReLU(negative_slope=0.2),
-            tf.keras.layers.Conv2D(filters=128, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv12"),
+            tf.keras.layers.Conv2D(
+                filters=128, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv12"),
             tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv8 = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(filters=64, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv13"),
-            tf.keras.layers.Conv2D(filters=64, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv14"),
+            tf.keras.layers.Conv2D(
+                filters=64, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv13"),
+            tf.keras.layers.Conv2D(
+                filters=64, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv14"),
             tf.keras.layers.ReLU(negative_slope=0.2),
         ])
 
         self.conv9 = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv15"),
+            tf.keras.layers.Conv2D(
+                filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv15"),
             tf.keras.layers.ReLU(negative_slope=0.2),
-            tf.keras.layers.Conv2D(filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv16"),
+            tf.keras.layers.Conv2D(
+                filters=32, kernel_size=3, strides=1, padding="SAME", name=self.name + "_conv16"),
             tf.keras.layers.ReLU(negative_slope=0.2),
-            tf.keras.layers.Conv2D(filters=12, kernel_size=1, strides=1, padding="SAME", name=self.name + "_conv17"),
+            tf.keras.layers.Conv2D(
+                filters=12, kernel_size=1, strides=1, padding="SAME", name=self.name + "_conv17"),
         ])
-
-        # self.conv10 = tf.keras.Sequential([
-        # ])
 
         self.up6 = upsample_and_concat(256, 512)
         self.up7 = upsample_and_concat(128, 256)
@@ -138,22 +154,17 @@ class NetWork(tf.keras.Model):
         conv4 = self.conv4(pool3)
         pool4 = tf.nn.max_pool2d(conv4, ksize=2, strides=2, padding='SAME')
         conv5 = self.conv5(pool4)
-        # pool5 = tf.nn.max_pool2d(conv5, ksize=2, strides=2, padding='SAME')
         up6 = self.up6(conv5, conv4)
-        # up6 = upsample_and_concat(conv5, conv4, 256, 512)
         conv6 = self.conv6(up6)
         up7 = self.up7(conv6, conv3)
-        # up7 = upsample_and_concat(conv6, conv3, 128, 256)
         conv7 = self.conv7(up7)
         up8 = self.up8(conv7, conv2)
-        # up8 = upsample_and_concat(conv7, conv2, 64, 128)
         conv8 = self.conv8(up8)
         up9 = self.up9(conv8, conv1)
-        # up9 = upsample_and_concat(conv8, conv1, 32, 64)
         conv9 = self.conv9(up9)
-        # conv10 = self.conv10(conv9)
         out = tf.nn.depth_to_space(input=conv9, block_size=2)
         return out
+
 
 def pack_raw(raw):
     # pack Bayer image to 4 channels
@@ -171,25 +182,9 @@ def pack_raw(raw):
                           im[1:H:2, 0:W:2, :]), axis=2)
     return out
 
+
 net = NetWork()
-# net.load_weights(checkpoint_dir) # 1642 epoch
-# sess = tf.compat.v1.Session()
-# in_image = tf.compat.v1.placeholder(tf.float32, [None, None, None, 4])
-# gt_image = tf.compat.v1.placeholder(tf.float32, [None, None, None, 3])
-# out_image = network(in_image)
-
-# G_loss = tf.reduce_mean(input_tensor=tf.abs(out_image - gt_image))
-
-# t_vars = tf.compat.v1.trainable_variables()
-# lr = tf.compat.v1.placeholder(tf.float32)
-# G_opt = tf.compat.v1.train.AdamOptimizer(learning_rate=lr).minimize(G_loss)
-
-# saver = tf.compat.v1.train.Saver()
-# sess.run(tf.compat.v1.global_variables_initializer())
-# ckpt = tf.train.get_checkpoint_state(checkpoint_dir)
-# if ckpt:
-#     print('loaded ' + ckpt.model_checkpoint_path)
-#     saver.restore(sess, ckpt.model_checkpoint_path)
+# net.load_weights(checkpoint_dir)
 
 # Raw data takes long time to load. Keep them in memory after loaded.
 gt_images = [None] * 6000
@@ -202,19 +197,21 @@ g_loss = np.zeros((5000, 1))
 
 allfolders = glob.glob(result_dir + '*0')
 lastepoch = 0
-# for folder in allfolders:
-#     lastepoch = np.maximum(lastepoch, int(folder[-4:]))
 
 learning_rate = 1e-4
-lr = tf.Variable(name='lr', initial_value=learning_rate, trainable=False, shape=[])
+lr = tf.Variable(name='lr', initial_value=learning_rate,
+                 trainable=False, shape=[])
 optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
-var_list_fn = lambda: net.trainable_weights
+def var_list_fn(): return net.trainable_weights
+
+
 for epoch in tqdm.tqdm(range(lastepoch, 4001)):
     if os.path.isdir(result_dir + '%04d' % epoch):
         continue
     cnt = 0
     if epoch == 2000:
-        lr = tf.Variable(name='lr', initial_value=1e-5, trainable=False, shape=[])
+        lr = tf.Variable(name='lr', initial_value=1e-5,
+                         trainable=False, shape=[])
         optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
         tqdm.tqdm.write("Learning rate changed to 1e-5")
         # learning_rate = 1e-5
@@ -238,10 +235,12 @@ for epoch in tqdm.tqdm(range(lastepoch, 4001)):
 
         if input_images[str(ratio)[0:3]][ind] is None:
             raw = rawpy.imread(in_path)
-            input_images[str(ratio)[0:3]][ind] = np.expand_dims(pack_raw(raw), axis=0) * ratio
+            input_images[str(ratio)[0:3]][ind] = np.expand_dims(
+                pack_raw(raw), axis=0) * ratio
 
             gt_raw = rawpy.imread(gt_path)
-            im = gt_raw.postprocess(use_camera_wb=True, half_size=False, no_auto_bright=True, output_bps=16)
+            im = gt_raw.postprocess(
+                use_camera_wb=True, half_size=False, no_auto_bright=True, output_bps=16)
             gt_images[ind] = np.expand_dims(np.float32(im / 65535.0), axis=0)
 
         # crop
@@ -250,8 +249,10 @@ for epoch in tqdm.tqdm(range(lastepoch, 4001)):
 
         xx = np.random.randint(0, W - ps)
         yy = np.random.randint(0, H - ps)
-        input_patch = input_images[str(ratio)[0:3]][ind][:, yy:yy + ps, xx:xx + ps, :]
-        gt_patch = gt_images[ind][:, yy * 2:yy * 2 + ps * 2, xx * 2:xx * 2 + ps * 2, :]
+        input_patch = input_images[str(
+            ratio)[0:3]][ind][:, yy:yy + ps, xx:xx + ps, :]
+        gt_patch = gt_images[ind][:, yy * 2:yy *
+                                  2 + ps * 2, xx * 2:xx * 2 + ps * 2, :]
 
         if np.random.randint(2, size=1)[0] == 1:  # random flip
             input_patch = np.flip(input_patch, axis=1)
@@ -264,40 +265,26 @@ for epoch in tqdm.tqdm(range(lastepoch, 4001)):
             gt_patch = np.transpose(gt_patch, (0, 2, 1, 3))
 
         input_patch = np.minimum(input_patch, 1.0)
-        
+
         with tf.GradientTape() as tape:
             output = net(input_patch)
             G_loss = tf.reduce_mean(input_tensor=tf.abs(output - gt_patch))
-            # loss_fn = lambda: tf.keras.losses.MAE(gt_patch, output)
-            # G_loss = loss_fn()
-            gradients_of_generator = tape.gradient(G_loss, net.trainable_variables)
-            optimizer.apply_gradients(zip(gradients_of_generator, net.trainable_variables))
-            # optimizer.minimize(loss_fn, var_list=var_list_fn)
-
-            # _, G_current, output = sess.run([G_opt, G_loss, out_image],
-            #                                 feed_dict={in_image: input_patch, gt_image: gt_patch, lr: learning_rate})
+            gradients_of_generator = tape.gradient(
+                G_loss, net.trainable_variables)
+            optimizer.apply_gradients(
+                zip(gradients_of_generator, net.trainable_variables))
             output = np.minimum(np.maximum(output, 0), 1)
             g_loss[ind] = G_loss
-        
-        # with train_summary_writer.as_default():
-        #     # img = tf.reshape(batch_complete[0], (-1, -1, -1, 3))
-        #     img = tf.concat([output[:1], gt_patch[:1]], axis=2)
-        #     # img = output[:1]
-        #     # tf.summary.image("val/%d"%idx, img, step=epoch)
-        #     tf.summary.image("train", img, step=(epoch * len(train_ids) + ind))
 
-        tqdm.tqdm.write("%d %d Avg Loss=%.3f Time=%.3f" % (epoch, cnt, np.mean(g_loss[np.where(g_loss)]), time.time() - st))
+        tqdm.tqdm.write("%d %d Avg Loss=%.3f Time=%.3f" % (
+            epoch, cnt, np.mean(g_loss[np.where(g_loss)]), time.time() - st))
 
     if epoch % save_freq == 0:
-        # if not os.path.isdir(result_dir + '%04d' % epoch):
-        # os.makedirs(result_dir + '%04d' % epoch, exist_ok=True)
 
-        temp = np.concatenate((gt_patch[0, :, :, :], output[0, :, :, :]), axis=1)
+        temp = np.concatenate(
+            (gt_patch[0, :, :, :], output[0, :, :, :]), axis=1)
         Image.fromarray((temp * 255).astype('uint8').clip(min=0, max=255)).save(
-                result_dir + '%04d_%05d_00_train_%d.jpg' % (epoch, train_id, ratio))
-                # result_dir + '%04d/%05d_00_train_%d.jpg' % (epoch, train_id, ratio))
-        # scipy.misc.toimage(temp * 255, high=255, low=0, cmin=0, cmax=255).save(
-        #     result_dir + '%04d/%05d_00_train_%d.jpg' % (epoch, train_id, ratio))
+            result_dir + '%04d_%05d_00_train_%d.jpg' % (epoch, train_id, ratio))
 
         with train_summary_writer.as_default():
             img = tf.concat([output[:1], gt_patch[:1]], axis=2)
@@ -305,4 +292,3 @@ for epoch in tqdm.tqdm(range(lastepoch, 4001)):
 
     net.save_weights(checkpoint_dir, save_format='tf')
     tqdm.tqdm.write('Saved models to %s' % checkpoint_dir)
-    # saver.save(sess, checkpoint_dir + 'model.ckpt')
